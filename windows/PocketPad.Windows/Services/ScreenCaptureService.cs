@@ -190,7 +190,7 @@ public sealed class ScreenCaptureService : IDisposable
         {
             g.CompositingMode = CompositingMode.SourceCopy;
             g.CompositingQuality = CompositingQuality.HighSpeed;
-            g.InterpolationMode = InterpolationMode.Bilinear;
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.Bilinear;
             g.SmoothingMode = SmoothingMode.None;
             g.PixelOffsetMode = PixelOffsetMode.Half;
             g.DrawImage(source, new Rectangle(0, 0, dw, dh), new Rectangle(sx, sy, sw, sh), GraphicsUnit.Pixel);
@@ -349,8 +349,8 @@ public sealed class ScreenCaptureService : IDisposable
                         DriverType.Unknown,
                         DeviceCreationFlags.BgraSupport,
                         levels,
-                        out var device,
-                        out var context
+                        out ID3D11Device device,
+                        out ID3D11DeviceContext context
                     );
 
                     if (devRes.Failure)

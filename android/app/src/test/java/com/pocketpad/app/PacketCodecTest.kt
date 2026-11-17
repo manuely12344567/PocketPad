@@ -7,6 +7,7 @@ import com.pocketpad.app.protocol.KeyboardAction
 import com.pocketpad.app.protocol.MouseButtonAction
 import com.pocketpad.app.protocol.PacketCodec
 import com.pocketpad.app.protocol.PacketType
+import com.pocketpad.app.protocol.PocketPadConstants
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test
