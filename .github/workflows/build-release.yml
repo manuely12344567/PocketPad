@@ -1,0 +1,163 @@
+name: Compiler PocketPad (Android APK + Windows EXE)
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    name: Android (.apk)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupérer le code source
+        uses: actions/checkout@v4
+
+      - name: Installer JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurer Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Générer une clé de signature Release APK
+        run: |
+          keytool -genkeypair -v \
+            -keystore "$RUNNER_TEMP/pocketpad-release.jks" \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -alias pocketpad \
+            -storepass pocketpad123 \
+            -keypass pocketpad123 \
+            -dname "CN=PocketPad, OU=Gaming, O=PocketPad, L=Lome, C=TG"
+
+      - name: Tests unitaires Kotlin & Compilation APK Release
+        working-directory: android
+        env:
+          POCKETPAD_KEYSTORE_PATH: ${{ runner.temp }}/pocketpad-release.jks
+          POCKETPAD_KEYSTORE_PASSWORD: pocketpad123
+          POCKETPAD_KEY_ALIAS: pocketpad
+          POCKETPAD_KEY_PASSWORD: pocketpad123
+        run: |
+          gradle testDebugUnitTest --no-daemon
+          gradle assembleRelease --no-daemon
+          mkdir -p ../dist-android
+          cp app/build/outputs/apk/release/app-release.apk ../dist-android/PocketPad-Android-1.0.0.apk
+          ls -lh ../dist-android/
+
+      - name: Archiver l’APK Android
+        uses: actions/upload-artifact@v4
+        with:
+          name: PocketPad-Android-APK
+          path: dist-android/*.apk
+
+  build-windows:
+    name: Windows (.exe)
+    runs-on: windows-latest
+
+    steps:
+      - name: Récupérer le code source
+        uses: actions/checkout@v4
+
+      - name: Installer .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Embarquer Google ADB (Platform-Tools) pour le câble USB auto
+        shell: pwsh
+        run: |
+          $zipPath = "$env:RUNNER_TEMP\platform-tools.zip"
+          $extractDir = "$env:RUNNER_TEMP\platform-tools-extract"
+          $targetDir = "windows\PocketPad.Windows\Tools\adb"
+          Invoke-WebRequest -Uri "https://dl.google.com/android/repository/platform-tools-latest-windows.zip" -OutFile $zipPath
+          Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+          New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+          Copy-Item "$extractDir\platform-tools\adb.exe" $targetDir
+          Copy-Item "$extractDir\platform-tools\AdbWinApi.dll" $targetDir
+          Copy-Item "$extractDir\platform-tools\AdbWinUsbApi.dll" $targetDir
+          Get-ChildItem $targetDir
+
+      - name: Tests unitaires C# (PocketPad.Tests)
+        run: dotnet test windows/PocketPad.Tests/PocketPad.Tests.csproj -c Release
+
+      - name: Compiler PocketPad Portable (.exe autonome avec ADB intégré)
+        run: |
+          dotnet publish windows/PocketPad.Windows/PocketPad.Windows.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -o windows/publish-win-x64
+        shell: pwsh
+
+      - name: Préparer Portable & Compiler l’Installateur Setup (.exe via Inno Setup)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path windows\release | Out-Null
+          Copy-Item "windows\publish-win-x64\PocketPad.exe" "windows\release\PocketPad-Portable-1.0.0.exe"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "windows\installer\PocketPad.iss"
+          Get-ChildItem windows\release\*.exe
+
+      - name: Archiver les exécutables Windows (.exe)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PocketPad-Windows-EXE
+          path: windows/release/*.exe
+
+  publish-release:
+    name: Publier la Release GitHub v1.0.0
+    needs: [build-android, build-windows]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Télécharger l’APK Android
+        uses: actions/download-artifact@v4
+        with:
+          name: PocketPad-Android-APK
+          path: release-assets
+
+      - name: Télécharger les exécutables Windows
+        uses: actions/download-artifact@v4
+        with:
+          name: PocketPad-Windows-EXE
+          path: release-assets
+
+      - name: Vérifier les fichiers finaux
+        run: ls -lh release-assets/
+
+      - name: Publier la Release GitHub (Android APK + Windows Setup & Portable)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: PocketPad v1.0.0 — Android (.apk) & Windows (.exe)
+          body: |
+            ## Téléchargements 1 clic — PocketPad v1.0.0
+
+            Transforme ton téléphone Android en **véritable manette de jeu PC** (Xbox 360 virtuelle + Clavier/Souris) par **câble USB (< 2 ms)** ou **Bluetooth**, avec **éditeur visuel de manette intégré** !
+
+            ### Fichiers inclus
+            - **Android :** `PocketPad-Android-1.0.0.apk` — installe-le directement sur ton téléphone Android (Android 8.0+).
+            - **Windows (Installateur 1 clic) :** `PocketPad-Setup-1.0.0.exe` — installe PocketPad avec raccourci Bureau & Menu Démarrer (ADB USB embarqué automatiquement).
+            - **Windows (Portable 1 clic) :** `PocketPad-Portable-1.0.0.exe` — double-clic sans installation (ADB USB embarqué automatiquement).
+
+            ### Fonctionnalités v1.0.0
+            - **Connexion Câble USB prioritaire (< 2 ms)** : pont ADB embarqué automatique + détection Partage de connexion USB.
+            - **Connexion Bluetooth sans fil** : serveur RFCOMM natif intégré (aucun port COM manuel à configurer) + fallback Wi-Fi / IP.
+            - **Double mode PC** : **Manette Xbox 360 virtuelle (XInput)** via ViGEmBus (installation guidée 1 clic dans l’app) **+** **Clavier/Souris natif** (fonctionne immédiatement sans aucun pilote !).
+            - **Éditeur visuel complet sur Android** : glisser-déposer, redimensionnement, grille magnétique, remapping Xbox / Clavier / Souris, 5 profils pro pré-faits (Xbox 360, PlayStation, Course Gyroscope, FPS Clavier+Souris, PC Pavé tactile), mode Toggle/Turbo, vibrations & retour de force des jeux, import/export JSON.
+          files: |
+            release-assets/*
+          draft: false
+          prerelease: false
+          make_latest: true
