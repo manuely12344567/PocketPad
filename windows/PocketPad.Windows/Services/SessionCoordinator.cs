@@ -93,6 +93,7 @@ public sealed class SessionCoordinator : IDisposable
     private readonly AdbUsbBridge _adbBridge;
     private readonly TcpUsbServer _tcpServer;
     private readonly BluetoothServer _bluetoothServer;
+    private readonly VideoStreamServer _videoServer;
     private readonly PlayerSlotRegistry<PlayerSession> _registry = new(PocketPadConstants.MaxPlayers);
 
     private long _nextSessionId;
@@ -104,6 +105,7 @@ public sealed class SessionCoordinator : IDisposable
     public VirtualXboxDriver XboxDriver => _xboxDriver;
     public AdbUsbBridge AdbBridge => _adbBridge;
     public BluetoothServer BluetoothServer => _bluetoothServer;
+    public VideoStreamServer VideoServer => _videoServer;
 
     public event Action<MultiplayerSnapshot>? MultiplayerUpdated;
     public event Action<AdbStatusSnapshot>? AdbStatusUpdated;
@@ -126,6 +128,7 @@ public sealed class SessionCoordinator : IDisposable
             snap => BluetoothStatusUpdated?.Invoke(snap),
             HandleIncomingClientAsync
         );
+        _videoServer = new VideoStreamServer(log);
 
         _xboxDriver.RumbleReceived += OnXboxRumbleReceived;
     }
@@ -134,6 +137,7 @@ public sealed class SessionCoordinator : IDisposable
     {
         _xboxDriver.TryInitialize();
         _tcpServer.Start();
+        _videoServer.Start();
         _adbBridge.Start();
         _bluetoothServer.Start();
 
@@ -162,6 +166,11 @@ public sealed class SessionCoordinator : IDisposable
     {
         var active = _registry.GetAllActive();
         var count = active.Count;
+        var lanIp = TcpUsbServer.GetLocalNetworkAddresses()
+            .FirstOrDefault(e => !e.IsUsbTethering)?.IpAddress
+            ?? TcpUsbServer.GetLocalNetworkAddresses().FirstOrDefault()?.IpAddress
+            ?? string.Empty;
+
         foreach (var (slot, sess) in active)
         {
             var payload = new ServerInfoPayload(
@@ -172,7 +181,11 @@ public sealed class SessionCoordinator : IDisposable
                 PlayerSlot: slot,
                 MaxPlayers: PocketPadConstants.MaxPlayers,
                 ConnectedPlayers: count,
-                SlotColor: PocketPadConstants.GetSlotColor(slot)
+                SlotColor: PocketPadConstants.GetSlotColor(slot),
+                VideoPort: PocketPadConstants.VideoTcpPort,
+                VideoEnabled: _videoServer.StreamingEnabled,
+                SplitPreset: _videoServer.SplitConfig.Preset.ToString(),
+                LanIp: lanIp
             );
             await sess.WriteFrameAsync(PacketCodec.EncodeServerInfo(payload));
         }
@@ -446,6 +459,7 @@ public sealed class SessionCoordinator : IDisposable
         DisconnectAll();
         _kbMouse.ReleaseAll();
         _adbBridge.Dispose();
+        _videoServer.Dispose();
         _tcpServer.Dispose();
         _bluetoothServer.Dispose();
         _xboxDriver.Dispose();

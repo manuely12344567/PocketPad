@@ -5,10 +5,11 @@ import java.nio.ByteOrder
 import java.util.UUID
 
 object PocketPadConstants {
-    const val APP_VERSION = "1.1.0"
+    const val APP_VERSION = "1.2.0"
     const val MAX_PLAYERS = 4
     const val TCP_PORT = 27183
     const val UDP_DISCOVERY_PORT = 27184
+    const val VIDEO_TCP_PORT = 27185
     const val DISCOVERY_REQUEST = "POCKETPAD_DISCOVER_V1"
     const val DISCOVERY_RESPONSE_PREFIX = "POCKETPAD_SERVER_V1"
 
@@ -16,6 +17,9 @@ object PocketPadConstants {
 
     const val MAGIC_0: Byte = 0x50 // 'P'
     const val MAGIC_1: Byte = 0x50 // 'P'
+    const val VIDEO_MAGIC_0: Byte = 0x50 // 'P'
+    const val VIDEO_MAGIC_1: Byte = 0x56 // 'V'
+    const val MAX_VIDEO_PAYLOAD = 2_000_000
 
     fun slotColorHex(slot: Int): String = when (slot) {
         1 -> "#38BDF8"
@@ -189,6 +193,29 @@ object PacketCodec {
     }
 
     fun encodeResetInputs(): ByteArray = encodeFrame(PacketType.RESET_INPUTS, ByteArray(0))
+
+    /**
+     * 10-byte client control packet for dedicated video channel (TCP port 27185).
+     * cmd: 1 = Subscribe/Config, 2 = Pause, 3 = Resume
+     */
+    fun encodeVideoControl(
+        cmd: Int,
+        slot: Int,
+        maxWidth: Int,
+        maxHeight: Int,
+        quality: Int,
+    ): ByteArray {
+        val buf = ByteBuffer.allocate(10).order(ByteOrder.LITTLE_ENDIAN)
+        buf.put(PocketPadConstants.VIDEO_MAGIC_0)
+        buf.put(PocketPadConstants.VIDEO_MAGIC_1)
+        buf.put(1.toByte())
+        buf.put(cmd.toByte())
+        buf.put(slot.coerceIn(1, PocketPadConstants.MAX_PLAYERS).toByte())
+        buf.putShort(maxWidth.coerceIn(240, 1280).toShort())
+        buf.putShort(maxHeight.coerceIn(136, 720).toShort())
+        buf.put(quality.coerceIn(30, 85).toByte())
+        return buf.array()
+    }
 }
 
 class FrameStreamReader {

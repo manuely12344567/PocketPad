@@ -2,10 +2,11 @@ namespace PocketPad.Core.Protocol;
 
 public static class PocketPadConstants
 {
-    public const string AppVersion = "1.1.0";
+    public const string AppVersion = "1.2.0";
     public const int MaxPlayers = 4;
     public const int TcpPort = 27183;
     public const int UdpDiscoveryPort = 27184;
+    public const int VideoTcpPort = 27185;
     public const string DiscoveryRequest = "POCKETPAD_DISCOVER_V1";
     public const string DiscoveryResponsePrefix = "POCKETPAD_SERVER_V1";
 
@@ -30,6 +31,9 @@ public static class PocketPadConstants
 
     public const byte Magic0 = 0x50; // 'P'
     public const byte Magic1 = 0x50; // 'P'
+    public const byte VideoMagic0 = 0x50; // 'P'
+    public const byte VideoMagic1 = 0x56; // 'V'
+    public const int MaxVideoPayloadSize = 2_000_000;
 }
 
 [Flags]

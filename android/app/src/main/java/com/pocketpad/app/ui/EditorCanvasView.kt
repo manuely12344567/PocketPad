@@ -3,10 +3,14 @@ package com.pocketpad.app.ui
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.View
 import com.pocketpad.app.model.ControlElement
 import com.pocketpad.app.model.ControlType
+import com.pocketpad.app.transport.VideoStreamClient
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 
@@ -61,6 +65,23 @@ class EditorCanvasView(
         val w = width.toFloat()
         val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
+
+        // Show dim live game snapshot behind the editor grid so users can place buttons around the game HUD!
+        val previewBmp = VideoStreamClient.latestFrame
+        if (previewBmp != null && !previewBmp.isRecycled && previewBmp.width > 0 && previewBmp.height > 0) {
+            val scale = minOf(w / previewBmp.width, h / previewBmp.height)
+            val dw = previewBmp.width * scale
+            val dh = previewBmp.height * scale
+            val left = (w - dw) / 2f
+            val top = (h - dh) / 2f
+            val p = Paint(Paint.FILTER_BITMAP_FLAG).apply { alpha = 105 }
+            canvas.drawBitmap(
+                previewBmp,
+                Rect(0, 0, previewBmp.width, previewBmp.height),
+                RectF(left, top, left + dw, top + dh),
+                p
+            )
+        }
 
         if (snapToGrid) {
             GamepadRenderer.drawGrid(canvas, w, h, 0.05f)

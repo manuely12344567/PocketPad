@@ -1,5 +1,6 @@
 using PocketPad.Core.Multiplayer;
 using PocketPad.Core.Protocol;
+using PocketPad.Core.Video;
 using Xunit;
 
 namespace PocketPad.Tests;
@@ -187,5 +188,83 @@ public class PacketCodecTests
         Assert.Same(p1, evicted);
         Assert.Null(reg.GetAtSlot(1));
         Assert.Same(p1Fresh, reg.GetAtSlot(3));
+    }
+
+    [Fact]
+    public void SplitScreenPresetsAndMenuToggleWorkCorrectly()
+    {
+        var cfg = new SplitScreenConfiguration();
+        cfg.SetPreset(SplitScreenPreset.Split4Grid);
+
+        Assert.Equal(new NormalizedCropRect(0f, 0f, 0.5f, 0.5f), cfg.GetEffectiveRectForSlot(1, true));
+        Assert.Equal(new NormalizedCropRect(0.5f, 0f, 0.5f, 0.5f), cfg.GetEffectiveRectForSlot(2, true));
+        Assert.Equal(new NormalizedCropRect(0f, 0.5f, 0.5f, 0.5f), cfg.GetEffectiveRectForSlot(3, true));
+        Assert.Equal(new NormalizedCropRect(0.5f, 0.5f, 0.5f, 0.5f), cfg.GetEffectiveRectForSlot(4, true));
+
+        // Swap J1 <-> J2 screen views
+        cfg.SwapSlotViews(1, 2);
+        Assert.Equal(new NormalizedCropRect(0.5f, 0f, 0.5f, 0.5f), cfg.GetEffectiveRectForSlot(1, true));
+        Assert.Equal(new NormalizedCropRect(0f, 0f, 0.5f, 0.5f), cfg.GetEffectiveRectForSlot(2, true));
+
+        // Menu toggle forces full screen for all players
+        cfg.ForceFullMenuView = true;
+        Assert.Equal(NormalizedCropRect.Full, cfg.GetEffectiveRectForSlot(1, true));
+        Assert.Equal(NormalizedCropRect.Full, cfg.GetEffectiveRectForSlot(4, true));
+        cfg.ForceFullMenuView = false;
+
+        // Auto-detect Menu vs Split falls back to full screen when no divider is detected
+        cfg.AutoDetectMenuVsSplit = true;
+        Assert.Equal(NormalizedCropRect.Full, cfg.GetEffectiveRectForSlot(2, detectedSplitActive: false));
+        Assert.Equal(new NormalizedCropRect(0f, 0f, 0.5f, 0.5f), cfg.GetEffectiveRectForSlot(2, detectedSplitActive: true));
+    }
+
+    [Fact]
+    public void SplitSeamDetectorDistinguishesBlackSplitLineFromBusyMenu()
+    {
+        var seam = new byte[64];
+        var above = new byte[64];
+        var below = new byte[64];
+        for (int i = 0; i < 64; i++)
+        {
+            seam[i] = 6; // clean dark split border
+            above[i] = (byte)(90 + (i % 40));
+            below[i] = (byte)(110 + ((i * 3) % 50));
+        }
+        Assert.True(SplitScreenConfiguration.HasCleanSplitSeam(seam, above, below));
+
+        // Noisy full-screen menu center line should NOT falsely trigger a split border
+        for (int i = 0; i < 64; i++)
+        {
+            seam[i] = (byte)(40 + ((i * 29) % 180));
+            above[i] = seam[i];
+            below[i] = seam[i];
+        }
+        Assert.False(SplitScreenConfiguration.HasCleanSplitSeam(seam, above, below));
+    }
+
+    [Fact]
+    public void VideoPacketCodecAndServerInfoFrameSizeRoundTrip()
+    {
+        var req = new VideoSubscribePacket(VideoClientCommand.Subscribe, Slot: 3, MaxWidth: 854, MaxHeight: 480, Quality: 62);
+        var encoded = VideoPacketCodec.EncodeClientPacket(req);
+        Assert.Equal(VideoPacketCodec.ClientPacketSize, encoded.Length);
+        Assert.True(VideoPacketCodec.TryDecodeClientPacket(encoded, out var decoded));
+        Assert.Equal(req, decoded);
+
+        var infoFrame = PacketCodec.EncodeServerInfo(new ServerInfoPayload(
+            PcName: "SUPER-LONG-GAMING-DESKTOP-WORKSTATION-9999",
+            ViGemReady: true,
+            Mode: "auto",
+            Version: "1.2.0",
+            PlayerSlot: 2,
+            MaxPlayers: 4,
+            ConnectedPlayers: 3,
+            SlotColor: "#A855F7",
+            VideoPort: 27185,
+            VideoEnabled: true,
+            SplitPreset: "Split2Horizontal",
+            LanIp: "192.168.1.142"
+        ));
+        Assert.True(infoFrame.Length <= 259);
     }
 }

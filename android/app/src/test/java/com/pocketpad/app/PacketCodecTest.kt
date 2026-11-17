@@ -85,4 +85,16 @@ class PacketCodecTest {
         assertEquals(true, payloadText.contains("\"clientId\":\"pp_abc123\""))
         assertEquals(true, payloadText.contains("\"preferredSlot\":2"))
     }
+
+    @Test
+    fun videoControlPacketMatchesWireSpec() {
+        val pkt = PacketCodec.encodeVideoControl(cmd = 1, slot = 4, maxWidth = 854, maxHeight = 480, quality = 65)
+        assertEquals(10, pkt.size)
+        assertEquals(PocketPadConstants.VIDEO_MAGIC_0, pkt[0])
+        assertEquals(PocketPadConstants.VIDEO_MAGIC_1, pkt[1])
+        assertEquals(1.toByte(), pkt[2])
+        assertEquals(1.toByte(), pkt[3])
+        assertEquals(4.toByte(), pkt[4])
+        assertEquals(65.toByte(), pkt[9])
+    }
 }

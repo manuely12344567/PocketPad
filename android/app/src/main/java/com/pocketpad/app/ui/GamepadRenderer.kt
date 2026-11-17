@@ -78,10 +78,13 @@ object GamepadRenderer {
         viewH: Float,
         state: ControlVisualState = ControlVisualState(),
         selectedInEditor: Boolean = false,
+        globalOpacityScale: Float = 1f,
     ) {
         val rect = computeRect(el, viewW, viewH)
         val accent = parseColorSafe(el.colorHex)
-        val alphaBase = (el.opacity.coerceIn(0.25f, 1f) * 255).toInt()
+        val opScale = globalOpacityScale.coerceIn(0.15f, 1f)
+        val alphaBase = (el.opacity.coerceIn(0.25f, 1f) * opScale * 255).toInt().coerceIn(28, 255)
+        val labelAlpha = (150 + (opScale * 105f)).toInt().coerceIn(155, 255)
         val active = state.pressed || state.toggledOn
 
         when (el.type) {
@@ -110,14 +113,14 @@ object GamepadRenderer {
                 val kx = cx + state.stickX.coerceIn(-1f, 1f) * maxTravel
                 val ky = cy + state.stickY.coerceIn(-1f, 1f) * maxTravel
 
-                bgFill.color = withAlpha(if (active) accent else Color.parseColor("#1E2C4A"), 235)
+                bgFill.color = withAlpha(if (active) accent else Color.parseColor("#1E2C4A"), (if (active) 220 else (alphaBase * 0.95f).toInt()).coerceIn(60, 240))
                 canvas.drawCircle(kx, ky, knobR, bgFill)
-                strokePaint.color = accent
+                strokePaint.color = withAlpha(accent, labelAlpha)
                 strokePaint.strokeWidth = 4f
                 canvas.drawCircle(kx, ky, knobR, strokePaint)
 
                 textPaint.textSize = (knobR * 0.72f).coerceIn(16f, 36f)
-                textPaint.color = Color.WHITE
+                textPaint.color = withAlpha(Color.WHITE, labelAlpha)
                 drawCenteredText(canvas, el.label, kx, ky, textPaint)
             }
 
@@ -193,7 +196,7 @@ object GamepadRenderer {
                 canvas.drawRoundRect(rect, cornerRadius, cornerRadius, strokePaint)
 
                 textPaint.textSize = (min(rect.width(), rect.height()) * 0.36f).coerceIn(16f, 42f)
-                textPaint.color = if (active) Color.WHITE else Color.parseColor("#F1F5F9")
+                textPaint.color = if (active) Color.WHITE else withAlpha(Color.parseColor("#F1F5F9"), labelAlpha)
                 drawCenteredText(canvas, el.label, rect.centerX(), rect.centerY(), textPaint)
 
                 // Small indicator badges for Toggle / Turbo

@@ -3,8 +3,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Shapes;
 using PocketPad.Core.Protocol;
+using PocketPad.Core.Video;
 using PocketPad.Windows.Services;
 
 namespace PocketPad.Windows;
@@ -37,6 +37,7 @@ public partial class MainWindow : Window
     private readonly List<string> _logLines = new();
     private MultiplayerSnapshot? _latestSnapshot;
     private int _selectedSlot = 1;
+    private bool _switchTabActive;
 
     public MainWindow()
     {
@@ -46,15 +47,202 @@ public partial class MainWindow : Window
         _coordinator.MultiplayerUpdated += OnMultiplayerUpdated;
         _coordinator.AdbStatusUpdated += OnAdbStatusUpdated;
         _coordinator.BluetoothStatusUpdated += OnBluetoothStatusUpdated;
+        _coordinator.VideoServer.PreviewJpegReady += OnVideoPreviewJpegReady;
+        _coordinator.VideoServer.TelemetryUpdated += OnVideoTelemetryUpdated;
+
+        SplitEditor.CustomRectEdited += OnCustomSplitRectEdited;
 
         Loaded += (_, _) =>
         {
+            PopulateMonitors();
             _coordinator.StartAll();
             RefreshViGemUi();
             RefreshLocalIps();
+            RefreshSplitUiState();
             OnAdbStatusUpdated(_coordinator.AdbBridge.CurrentStatus);
             OnBluetoothStatusUpdated(_coordinator.BluetoothServer.CurrentStatus);
         };
+    }
+
+    private void PopulateMonitors()
+    {
+        var monitors = ScreenCaptureService.EnumerateMonitors();
+        CmbMonitor.Items.Clear();
+        foreach (var m in monitors)
+        {
+            CmbMonitor.Items.Add(m.DisplayName);
+        }
+        if (CmbMonitor.Items.Count > 0)
+            CmbMonitor.SelectedIndex = 0;
+    }
+
+    private void OnVideoPreviewJpegReady(byte[] jpegBytes)
+    {
+        if (!_switchTabActive) return;
+        Dispatcher.BeginInvoke(() => SplitEditor.UpdatePreviewJpeg(jpegBytes));
+    }
+
+    private void OnVideoTelemetryUpdated(VideoTelemetrySnapshot snap)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (!snap.StreamingEnabled)
+            {
+                TxtHeaderVideo.Text = "Écran Switch : OFF";
+                TxtVideoTelemetry.Text = "Diffusion vidéo en pause";
+                return;
+            }
+
+            var autoTag = _coordinator.VideoServer.SplitConfig.AutoDetectMenuVsSplit
+                ? (snap.DetectedSplitActive ? " · Split détecté" : " · Menu auto")
+                : string.Empty;
+
+            TxtHeaderVideo.Text = snap.ActiveViewers > 0
+                ? $"Écran Switch : {snap.ActiveViewers} vue(s) · {snap.ActualFps} FPS"
+                : "Écran Switch : Prêt";
+
+            TxtVideoTelemetry.Text = $"{snap.BackendName} · {snap.ActiveViewers} écran(s) · {snap.ActualFps} FPS · {snap.BandwidthKbps} kbps{autoTag}";
+        });
+    }
+
+    private void OnCustomSplitRectEdited(int slot, NormalizedCropRect rect)
+    {
+        _coordinator.VideoServer.SplitConfig.SetCustomRect(slot, rect);
+        RefreshSplitPresetButtons();
+    }
+
+    private void SwitchWorkspaceTab(bool showSwitch)
+    {
+        _switchTabActive = showSwitch;
+        PanelGamepad.Visibility = showSwitch ? Visibility.Collapsed : Visibility.Visible;
+        PanelSwitch.Visibility = showSwitch ? Visibility.Visible : Visibility.Collapsed;
+        _coordinator.VideoServer.PreviewRequested = showSwitch;
+
+        BtnTabGamepad.Style = (Style)FindResource(showSwitch ? "SecondaryButton" : "PrimaryButton");
+        BtnTabSwitch.Style = (Style)FindResource(showSwitch ? "PrimaryButton" : "SecondaryButton");
+
+        if (showSwitch)
+            RefreshSplitUiState();
+    }
+
+    private void OnTabGamepadClick(object sender, RoutedEventArgs e) => SwitchWorkspaceTab(false);
+    private void OnTabSwitchClick(object sender, RoutedEventArgs e) => SwitchWorkspaceTab(true);
+    private void OnOpenSwitchTabClick(object sender, MouseButtonEventArgs e) => SwitchWorkspaceTab(true);
+
+    private async void ApplySplitPreset(SplitScreenPreset preset)
+    {
+        _coordinator.VideoServer.SplitConfig.SetPreset(preset);
+        RefreshSplitUiState();
+        AppendLog($"Découpage Écran Switch : {preset}");
+        await _coordinator.BroadcastServerInfoAsync();
+    }
+
+    private void OnSplitPresetFull(object sender, RoutedEventArgs e) => ApplySplitPreset(SplitScreenPreset.FullShared);
+    private void OnSplitPreset2H(object sender, RoutedEventArgs e) => ApplySplitPreset(SplitScreenPreset.Split2Horizontal);
+    private void OnSplitPreset2V(object sender, RoutedEventArgs e) => ApplySplitPreset(SplitScreenPreset.Split2Vertical);
+    private void OnSplitPreset3(object sender, RoutedEventArgs e) => ApplySplitPreset(SplitScreenPreset.Split3TopWide);
+    private void OnSplitPreset4(object sender, RoutedEventArgs e) => ApplySplitPreset(SplitScreenPreset.Split4Grid);
+    private void OnSplitPresetCustom(object sender, RoutedEventArgs e) => ApplySplitPreset(SplitScreenPreset.Custom);
+
+    private void OnToggleMenuOverrideClick(object sender, RoutedEventArgs e)
+    {
+        var cfg = _coordinator.VideoServer.SplitConfig;
+        cfg.ForceFullMenuView = !cfg.ForceFullMenuView;
+        RefreshSplitUiState();
+        AppendLog(cfg.ForceFullMenuView
+            ? "Vue Menu activée : tous les téléphones voient tout l’écran PC."
+            : "Vue Menu désactivée : retour au découpage individuel Split-Screen.");
+    }
+
+    private void OnAutoSplitChanged(object sender, RoutedEventArgs e)
+    {
+        if (_coordinator is null) return;
+        _coordinator.VideoServer.SplitConfig.AutoDetectMenuVsSplit = CbAutoSplit.IsChecked == true;
+        AppendLog(_coordinator.VideoServer.SplitConfig.AutoDetectMenuVsSplit
+            ? "Auto-détection Menu ↔ Match activée."
+            : "Auto-détection Menu ↔ Match désactivée.");
+    }
+
+    private void OnRotateSplitViewsClick(object sender, RoutedEventArgs e)
+    {
+        var activeCount = Math.Max(2, _latestSnapshot?.ConnectedCount ?? 2);
+        var preset = _coordinator.VideoServer.SplitConfig.Preset;
+        var cycle = preset switch
+        {
+            SplitScreenPreset.Split2Horizontal or SplitScreenPreset.Split2Vertical => 2,
+            SplitScreenPreset.Split3TopWide => 3,
+            SplitScreenPreset.Split4Grid => 4,
+            _ => activeCount,
+        };
+        _coordinator.VideoServer.SplitConfig.RotateSlotViews(cycle);
+        RefreshSplitUiState();
+        AppendLog($"Rotation des vues Split-Screen effectuée ({cycle} zones).");
+    }
+
+    private void OnResetSplitViewsClick(object sender, RoutedEventArgs e)
+    {
+        _coordinator.VideoServer.SplitConfig.ResetZoneMapping();
+        _coordinator.VideoServer.SplitConfig.ForceFullMenuView = false;
+        RefreshSplitUiState();
+        AppendLog("Découpage Split-Screen réinitialisé.");
+    }
+
+    private async void OnVideoEnabledChanged(object sender, RoutedEventArgs e)
+    {
+        if (_coordinator is null) return;
+        _coordinator.VideoServer.StreamingEnabled = CbVideoStreamEnabled.IsChecked == true;
+        await _coordinator.BroadcastServerInfoAsync();
+    }
+
+    private void OnMonitorSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_coordinator is null || CmbMonitor.SelectedIndex < 0) return;
+        _coordinator.VideoServer.CaptureService.SelectMonitor(CmbMonitor.SelectedIndex);
+    }
+
+    private void OnVideoQualityChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_coordinator is null) return;
+        var vs = _coordinator.VideoServer;
+        switch (CmbVideoQuality.SelectedIndex)
+        {
+            case 0: // Fluide 854p 30 FPS
+                vs.MaxWidthCap = 854; vs.MaxHeightCap = 480; vs.TargetFps = 30; vs.QualityCap = 62;
+                break;
+            case 1: // HD Net 960p 28 FPS
+                vs.MaxWidthCap = 960; vs.MaxHeightCap = 540; vs.TargetFps = 28; vs.QualityCap = 72;
+                break;
+            case 2: // Equilibré 720p 24 FPS
+                vs.MaxWidthCap = 720; vs.MaxHeightCap = 406; vs.TargetFps = 24; vs.QualityCap = 58;
+                break;
+            default: // Eco Wi-Fi 640p 18 FPS
+                vs.MaxWidthCap = 640; vs.MaxHeightCap = 360; vs.TargetFps = 18; vs.QualityCap = 48;
+                break;
+        }
+    }
+
+    private void RefreshSplitUiState()
+    {
+        var cfg = _coordinator.VideoServer.SplitConfig;
+        SplitEditor.UpdateLayoutState(cfg.Preset, cfg.ForceFullMenuView, cfg.GetAllConfiguredRects());
+        RefreshSplitPresetButtons();
+
+        BtnMenuToggle.Content = cfg.ForceFullMenuView ? "Vue Menu : ACTIF" : "Vue Menu : OFF";
+        BtnMenuToggle.Style = (Style)FindResource(cfg.ForceFullMenuView ? "PrimaryButton" : "SecondaryButton");
+    }
+
+    private void RefreshSplitPresetButtons()
+    {
+        var p = _coordinator.VideoServer.SplitConfig.Preset;
+        var primary = (Style)FindResource("PrimaryButton");
+        var secondary = (Style)FindResource("SecondaryButton");
+
+        BtnSplitFull.Style = p == SplitScreenPreset.FullShared ? primary : secondary;
+        BtnSplit2H.Style = p == SplitScreenPreset.Split2Horizontal ? primary : secondary;
+        BtnSplit2V.Style = p == SplitScreenPreset.Split2Vertical ? primary : secondary;
+        BtnSplit3.Style = p == SplitScreenPreset.Split3TopWide ? primary : secondary;
+        BtnSplit4.Style = p == SplitScreenPreset.Split4Grid ? primary : secondary;
+        BtnSplitCustom.Style = p == SplitScreenPreset.Custom ? primary : secondary;
     }
 
     private void OnMultiplayerUpdated(MultiplayerSnapshot snap)
@@ -68,7 +256,6 @@ public partial class MainWindow : Window
 
     private void RenderMultiplayer(MultiplayerSnapshot snap)
     {
-        // Header pill + 4 LED dots
         var leds = new[] { LedP1, LedP2, LedP3, LedP4 };
         for (int i = 0; i < 4; i++)
         {
@@ -93,7 +280,6 @@ public partial class MainWindow : Window
             BtnDisconnectAll.Visibility = Visibility.Collapsed;
         }
 
-        // Update 4 slot cards
         var cards = new[] { SlotCard1, SlotCard2, SlotCard3, SlotCard4 };
         var dots = new[] { SlotDot1, SlotDot2, SlotDot3, SlotDot4 };
         var names = new[] { SlotName1, SlotName2, SlotName3, SlotName4 };
@@ -122,7 +308,6 @@ public partial class MainWindow : Window
             hzs[i].Foreground = slotInfo.IsConnected ? CyanBrush : SlateDimBrush;
         }
 
-        // Update live visualizer for the currently selected player slot
         var focused = snap.Slots.FirstOrDefault(s => s.Slot == _selectedSlot);
         if (focused is not null)
         {
@@ -163,15 +348,8 @@ public partial class MainWindow : Window
             RenderMultiplayer(_latestSnapshot);
     }
 
-    private void OnKickSelectedSlotClick(object sender, RoutedEventArgs e)
-    {
-        _coordinator.DisconnectSlot(_selectedSlot);
-    }
-
-    private void OnDisconnectAllClick(object sender, RoutedEventArgs e)
-    {
-        _coordinator.DisconnectAll();
-    }
+    private void OnKickSelectedSlotClick(object sender, RoutedEventArgs e) => _coordinator.DisconnectSlot(_selectedSlot);
+    private void OnDisconnectAllClick(object sender, RoutedEventArgs e) => _coordinator.DisconnectAll();
 
     private async void OnTestRumbleClick(object sender, RoutedEventArgs e)
     {
@@ -254,7 +432,7 @@ public partial class MainWindow : Window
                 await _coordinator.BroadcastServerInfoAsync();
                 MessageBox.Show(
                     "Pilote ViGEmBus installé ! Jusqu’à 4 manettes virtuelles Xbox 360 sont maintenant prêtes pour le multijoueur.",
-                    "PocketPad v1.1.0 — Multijoueur prêt",
+                    "PocketPad v1.2.0 — Multijoueur prêt",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information
                 );
@@ -270,9 +448,7 @@ public partial class MainWindow : Window
     {
         _coordinator.XboxDriver.TryInitialize();
         if (_coordinator.XboxDriver.IsAvailable)
-        {
             _coordinator.EnsureAllActiveXboxSlotsConnected();
-        }
         RefreshViGemUi();
         await _coordinator.BroadcastServerInfoAsync();
     }
@@ -283,15 +459,8 @@ public partial class MainWindow : Window
         await _coordinator.AdbBridge.ForceRefreshAsync();
     }
 
-    private void OnRestartBluetoothClick(object sender, RoutedEventArgs e)
-    {
-        _coordinator.BluetoothServer.Restart();
-    }
-
-    private void OnRefreshIpsClick(object sender, RoutedEventArgs e)
-    {
-        RefreshLocalIps();
-    }
+    private void OnRestartBluetoothClick(object sender, RoutedEventArgs e) => _coordinator.BluetoothServer.Restart();
+    private void OnRefreshIpsClick(object sender, RoutedEventArgs e) => RefreshLocalIps();
 
     private async void OnModeChanged(object sender, RoutedEventArgs e)
     {
@@ -318,6 +487,8 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
+        _coordinator.VideoServer.PreviewJpegReady -= OnVideoPreviewJpegReady;
+        _coordinator.VideoServer.TelemetryUpdated -= OnVideoTelemetryUpdated;
         _coordinator.Dispose();
         base.OnClosing(e);
     }

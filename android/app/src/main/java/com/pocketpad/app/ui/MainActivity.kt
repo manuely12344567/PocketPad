@@ -137,7 +137,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(Color.parseColor("#F1F5F9"))
         })
         titleCol.addView(TextView(this).apply {
-            text = "Manette Multijoueur (1–4J) · USB, Bluetooth & Wi-Fi · v${PocketPadConstants.APP_VERSION}"
+            text = "Manette Multijoueur 4J + Mode Écran Switch · v${PocketPadConstants.APP_VERSION}"
             textSize = 12f
             setTextColor(Color.parseColor("#94A3B8"))
         })
@@ -376,12 +376,12 @@ class MainActivity : AppCompatActivity() {
 
         // Help card
         val helpCard = makeCard()
-        helpCard.addView(makeSectionTitle("GUIDE RAPIDE MULTIJOUEUR (USB, BLUETOOTH & WI-FI)"))
+        helpCard.addView(makeSectionTitle("GUIDE RAPIDE MODE SWITCH & MULTIJOUEUR"))
         helpCard.addView(TextView(this).apply {
-            text = "• Multijoueur jusqu’à 4 joueurs simultanés : chaque ami installe PocketPad sur son téléphone et se connecte au même PC (en mixant librement Câble USB, Bluetooth et Wi-Fi !).\n" +
-                "• Câble USB (ADB · < 2 ms) : active « Débogage USB » sur Android, branche le câble et appuie sur « Connexion Câble USB » (plusieurs câbles USB en même temps sont supportés !).\n" +
-                "• Bluetooth : associe le téléphone au PC dans Windows Bluetooth, puis clique sur « Bluetooth » ici.\n" +
-                "• Wi-Fi : sur le même Wi-Fi ou point d’accès, clique sur « Wi-Fi / IP → Auto-Scan réseau »."
+            text = "• Mode Écran Switch (1 à 4 joueurs) : ouvre l’onglet « Mode Écran Switch & Split-Screen » sur PocketPad PC pour choisir le découpage (Plein écran, 2J Haut/Bas, 2J G/D, 3J, 4J 2×2 ou cadres perso). Chaque téléphone affiche sa propre zone en direct derrière ses touches !\n" +
+                "• Câble USB (ADB · < 2 ms) : transporte simultanément la manette ET la vidéo fluide sans latence.\n" +
+                "• Wi-Fi / Bluetooth Hybride : en Wi-Fi la vidéo passe automatiquement ; en Bluetooth, si le téléphone est sur le même Wi-Fi que le PC, la vidéo s’active en mode hybride !\n" +
+                "• En jeu, touche « Écran: ON/OFF » ou « Opacité » dans la barre du haut pour ajuster la transparence des touches."
             textSize = 12f
             setTextColor(Color.parseColor("#94A3B8"))
             setLineSpacing(dp(3).toFloat(), 1f)

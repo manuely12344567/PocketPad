@@ -7,12 +7,12 @@
     <UseWPF>true</UseWPF>
     <RootNamespace>PocketPad.Windows</RootNamespace>
     <AssemblyName>PocketPad</AssemblyName>
-    <Version>1.1.0</Version>
-    <FileVersion>1.1.0.0</FileVersion>
-    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <Version>1.2.0</Version>
+    <FileVersion>1.2.0.0</FileVersion>
+    <AssemblyVersion>1.2.0.0</AssemblyVersion>
     <Product>PocketPad</Product>
     <Company>PocketPad</Company>
-    <Description>Manette de jeu multijoueur (1 à 4 joueurs) Android vers PC (USB, Bluetooth &amp; Wi-Fi) avec manettes Xbox 360 virtuelles et Clavier/Souris</Description>
+    <Description>Manette multijoueur (1–4J) + Mode Écran Switch Split-Screen Android vers PC (USB, Bluetooth &amp; Wi-Fi)</Description>
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
   </PropertyGroup>
 
@@ -23,6 +23,9 @@
   <ItemGroup>
     <PackageReference Include="Nefarius.ViGEm.Client" Version="1.21.256" />
     <PackageReference Include="InTheHand.Net.Bluetooth" Version="4.2.4" />
+    <PackageReference Include="Vortice.Direct3D11" Version="3.6.2" />
+    <PackageReference Include="Vortice.DXGI" Version="3.6.2" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.10" />
   </ItemGroup>
 
   <ItemGroup>

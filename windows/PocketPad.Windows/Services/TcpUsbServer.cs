@@ -123,7 +123,7 @@ public sealed class TcpUsbServer : IDisposable
                     continue;
 
                 var pcName = Environment.MachineName.Replace('|', '_');
-                var reply = $"{PocketPadConstants.DiscoveryResponsePrefix}|{pcName}|{PocketPadConstants.TcpPort}|{(_isViGemReady() ? "1" : "0")}|{_getConnectedCount()}|{PocketPadConstants.MaxPlayers}";
+                var reply = $"{PocketPadConstants.DiscoveryResponsePrefix}|{pcName}|{PocketPadConstants.TcpPort}|{(_isViGemReady() ? "1" : "0")}|{_getConnectedCount()}|{PocketPadConstants.MaxPlayers}|{PocketPadConstants.VideoTcpPort}";
                 var bytes = Encoding.UTF8.GetBytes(reply);
                 await _udpDiscovery.SendAsync(bytes, bytes.Length, result.RemoteEndPoint);
             }

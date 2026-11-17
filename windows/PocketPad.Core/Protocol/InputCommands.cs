@@ -55,7 +55,11 @@ public sealed record ServerInfoPayload(
     int PlayerSlot = 1,
     int MaxPlayers = PocketPadConstants.MaxPlayers,
     int ConnectedPlayers = 1,
-    string SlotColor = "#38BDF8"
+    string SlotColor = "#38BDF8",
+    int VideoPort = PocketPadConstants.VideoTcpPort,
+    bool VideoEnabled = true,
+    string SplitPreset = "FullShared",
+    string LanIp = ""
 );
 
 public readonly record struct DecodedPacket(PacketType Type, byte[] Payload);

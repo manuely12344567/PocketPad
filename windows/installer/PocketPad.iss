@@ -1,6 +1,6 @@
 ; PocketPad Windows 1-Click Installer (Inno Setup 6)
 #define MyAppName "PocketPad"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "PocketPad"
 #define MyAppExeName "PocketPad.exe"
 

@@ -1,6 +1,7 @@
 package com.pocketpad.app.ui
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -10,6 +11,8 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.SeekBar
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -26,6 +29,9 @@ import com.pocketpad.app.protocol.PocketPadConstants
 import com.pocketpad.app.protocol.RumbleCommand
 import com.pocketpad.app.transport.ConnectionManager
 import com.pocketpad.app.transport.ConnectionState
+import com.pocketpad.app.transport.VideoStreamClient
+import com.pocketpad.app.transport.VideoStreamSnapshot
+import kotlin.math.roundToInt
 
 class GamepadActivity : AppCompatActivity() {
 
@@ -35,15 +41,31 @@ class GamepadActivity : AppCompatActivity() {
     private lateinit var surface: GamepadSurfaceView
     private lateinit var playerBadge: TextView
     private lateinit var statusPill: TextView
+    private lateinit var btnScreen: TextView
+    private lateinit var btnOpacity: TextView
     private lateinit var btnGyro: TextView
     private lateinit var btnRecenter: TextView
     private lateinit var topAccentStrip: View
 
     private lateinit var activeProfile: LayoutProfile
     private var gyroActive = false
+    private var latestConnState: ConnectionState = ConnectionManager.currentState
+    private var latestVideoSnap: VideoStreamSnapshot = VideoStreamClient.currentSnapshot
 
     private val connListener: (ConnectionState) -> Unit = { st ->
-        runOnUiThread { updateStatusPill(st) }
+        latestConnState = st
+        syncVideoStreamWithConnection(st)
+        runOnUiThread { updateStatusPill(st, latestVideoSnap) }
+    }
+
+    private val videoFrameListener: (Bitmap, VideoStreamSnapshot) -> Unit = { bmp, snap ->
+        latestVideoSnap = snap
+        surface.setVideoFrame(bmp)
+    }
+
+    private val videoStatusListener: (VideoStreamSnapshot) -> Unit = { snap ->
+        latestVideoSnap = snap
+        runOnUiThread { updateStatusPill(latestConnState, snap) }
     }
 
     private val rumbleListener: (RumbleCommand) -> Unit = { rumble ->
@@ -59,6 +81,7 @@ class GamepadActivity : AppCompatActivity() {
         haptics = HapticsEngine(this)
         activeProfile = repo.getActiveProfile()
         surface = GamepadSurfaceView(this, haptics)
+        surface.setVideoDisplayOptions(repo.videoEnabled, repo.controlsOpacity, repo.videoFillScreen)
 
         gyro = GyroController(this) { sx, sy ->
             surface.setGyroInput(gyroActive, sx, sy)
@@ -88,9 +111,9 @@ class GamepadActivity : AppCompatActivity() {
         val hud = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), dp(4), dp(10), dp(4))
+            setPadding(dp(7), dp(4), dp(8), dp(4))
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#AA0F172A"))
+                setColor(Color.parseColor("#BB0F172A"))
                 cornerRadius = dp(20).toFloat()
                 setStroke(dp(1), Color.parseColor("#334155"))
             }
@@ -111,14 +134,20 @@ class GamepadActivity : AppCompatActivity() {
         hud.addView(playerBadge)
 
         statusPill = TextView(this).apply {
-            textSize = 11.5f
+            textSize = 11f
             setTextColor(Color.parseColor("#E2E8F0"))
-            setPadding(dp(7), dp(2), dp(8), dp(2))
+            setPadding(dp(7), dp(2), dp(6), dp(2))
         }
         hud.addView(statusPill)
 
+        btnScreen = makeHudChip("Écran: ON") { toggleVideoScreen() }
+        hud.addView(btnScreen)
+
+        btnOpacity = makeHudChip("Opacité") { showDisplaySettingsDialog() }
+        hud.addView(btnOpacity)
+
         hud.addView(makeHudChip("Profils") { showQuickProfilePicker() })
-        btnGyro = makeHudChip("Gyro: OFF") { toggleGyro() }
+        btnGyro = makeHudChip("Gyro") { toggleGyro() }
         hud.addView(btnGyro)
         btnRecenter = makeHudChip("Centrer") {
             gyro.recalibrate()
@@ -137,16 +166,22 @@ class GamepadActivity : AppCompatActivity() {
 
         setContentView(root)
         applyProfile(activeProfile)
+        updateScreenButtonUi()
     }
 
     override fun onResume() {
         super.onResume()
         enableImmersiveMode()
-        // Reload in case user edited profile in EditorActivity
         activeProfile = repo.getActiveProfile()
         applyProfile(activeProfile)
+        surface.setVideoDisplayOptions(repo.videoEnabled, repo.controlsOpacity, repo.videoFillScreen)
+        updateScreenButtonUi()
+
         ConnectionManager.addStateListener(connListener)
         ConnectionManager.addRumbleListener(rumbleListener)
+        VideoStreamClient.addFrameListener(videoFrameListener)
+        VideoStreamClient.addStatusListener(videoStatusListener)
+        syncVideoStreamWithConnection(ConnectionManager.currentState)
         surface.startTurboLoop()
     }
 
@@ -158,6 +193,140 @@ class GamepadActivity : AppCompatActivity() {
         haptics.stop()
         ConnectionManager.removeStateListener(connListener)
         ConnectionManager.removeRumbleListener(rumbleListener)
+        VideoStreamClient.removeFrameListener(videoFrameListener)
+        VideoStreamClient.removeStatusListener(videoStatusListener)
+        VideoStreamClient.updateSubscription(latestConnState.playerSlot.coerceAtLeast(1), repo.videoQuality, isPaused = true)
+    }
+
+    private fun syncVideoStreamWithConnection(st: ConnectionState) {
+        if (!repo.videoEnabled) {
+            VideoStreamClient.stop("Écran coupé")
+            surface.setVideoFrame(null)
+            return
+        }
+
+        if (!st.connected) {
+            VideoStreamClient.stop("Hors-ligne")
+            surface.setVideoFrame(null)
+            return
+        }
+
+        if (!st.serverVideoEnabled) {
+            VideoStreamClient.stop("Vidéo en pause sur PC")
+            surface.setVideoFrame(null)
+            return
+        }
+
+        val host = st.videoHost
+        if (host.isBlank()) {
+            VideoStreamClient.stop("Vidéo requiert USB ou Wi-Fi")
+            return
+        }
+
+        VideoStreamClient.start(
+            host = host,
+            port = st.videoPort,
+            slot = st.playerSlot.coerceIn(1, PocketPadConstants.MAX_PLAYERS),
+            jpegQuality = repo.videoQuality
+        )
+    }
+
+    private fun toggleVideoScreen() {
+        repo.videoEnabled = !repo.videoEnabled
+        surface.setVideoDisplayOptions(repo.videoEnabled, repo.controlsOpacity, repo.videoFillScreen)
+        updateScreenButtonUi()
+        syncVideoStreamWithConnection(latestConnState)
+        Toast.makeText(
+            this,
+            if (repo.videoEnabled) "Écran de jeu activé sur le téléphone" else "Écran coupé (mode manette seule)",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    private fun updateScreenButtonUi() {
+        if (repo.videoEnabled) {
+            btnScreen.text = "Écran: ON"
+            (btnScreen.background as? GradientDrawable)?.setColor(Color.parseColor("#0284C7"))
+        } else {
+            btnScreen.text = "Écran: OFF"
+            (btnScreen.background as? GradientDrawable)?.setColor(Color.parseColor("#1E293B"))
+        }
+    }
+
+    private fun showDisplaySettingsDialog() {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(16), dp(20), dp(8))
+        }
+
+        val opacityLabel = TextView(this).apply {
+            text = "Opacité des boutons sur la vidéo : ${(repo.controlsOpacity * 100).roundToInt()} %"
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        box.addView(opacityLabel)
+
+        val seekOpacity = SeekBar(this).apply {
+            max = 85 // maps 0..85 => 15%..100%
+            progress = ((repo.controlsOpacity * 100f).roundToInt() - 15).coerceIn(0, 85)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
+                    val pct = p + 15
+                    repo.controlsOpacity = pct / 100f
+                    opacityLabel.text = "Opacité des boutons sur la vidéo : $pct %"
+                    surface.setVideoDisplayOptions(repo.videoEnabled, repo.controlsOpacity, repo.videoFillScreen)
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {}
+            })
+        }
+        box.addView(seekOpacity)
+
+        val switchFill = Switch(this).apply {
+            text = "Remplir tout l’écran (zoom sans bandes noires)"
+            isChecked = repo.videoFillScreen
+            setPadding(0, dp(14), 0, dp(14))
+            setOnCheckedChangeListener { _, checked ->
+                repo.videoFillScreen = checked
+                surface.setVideoDisplayOptions(repo.videoEnabled, repo.controlsOpacity, repo.videoFillScreen)
+            }
+        }
+        box.addView(switchFill)
+
+        val qualityLabel = TextView(this).apply {
+            text = "Qualité vidéo demandée : ${repo.videoQuality} %"
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        box.addView(qualityLabel)
+
+        val seekQuality = SeekBar(this).apply {
+            max = 50 // maps 0..50 => 35..85
+            progress = (repo.videoQuality - 35).coerceIn(0, 50)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
+                    val q = p + 35
+                    repo.videoQuality = q
+                    qualityLabel.text = "Qualité vidéo demandée : $q %"
+                    if (repo.videoEnabled && latestConnState.connected) {
+                        VideoStreamClient.updateSubscription(
+                            latestConnState.playerSlot.coerceIn(1, PocketPadConstants.MAX_PLAYERS),
+                            q,
+                            isPaused = false
+                        )
+                    }
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {}
+            })
+        }
+        box.addView(seekQuality)
+
+        AlertDialog.Builder(this)
+            .setTitle("Affichage Mode Switch")
+            .setView(box)
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     private fun applyProfile(profile: LayoutProfile) {
@@ -171,7 +340,6 @@ class GamepadActivity : AppCompatActivity() {
 
     private fun toggleGyro() {
         if (activeProfile.gyroMode == GyroMode.OFF) {
-            // Enable steering wheel mode on the fly!
             activeProfile = activeProfile.copy(gyroMode = GyroMode.STEERING_LEFT_STICK)
             surface.setProfile(activeProfile)
             gyroActive = true
@@ -189,13 +357,13 @@ class GamepadActivity : AppCompatActivity() {
             btnRecenter.visibility = View.VISIBLE
         } else {
             gyro.stop()
-            btnGyro.text = "Gyro: OFF"
+            btnGyro.text = "Gyro"
             (btnGyro.background as? GradientDrawable)?.setColor(Color.parseColor("#1E293B"))
             btnRecenter.visibility = View.GONE
         }
     }
 
-    private fun updateStatusPill(st: ConnectionState) {
+    private fun updateStatusPill(st: ConnectionState, vid: VideoStreamSnapshot) {
         if (st.connected) {
             val slot = st.playerSlot.coerceIn(1, PocketPadConstants.MAX_PLAYERS)
             val colorHex = st.slotColorHex.ifBlank { PocketPadConstants.slotColorHex(slot) }
@@ -205,14 +373,16 @@ class GamepadActivity : AppCompatActivity() {
             (playerBadge.background as? GradientDrawable)?.setColor(slotColor)
             topAccentStrip.setBackgroundColor(slotColor)
 
-            val pingPart = if (st.pingMs >= 0) " · ${st.pingMs}ms" else ""
+            val pingPart = if (st.pingMs >= 0) "${st.pingMs}ms" else st.transportLabel
+            val fpsPart = if (repo.videoEnabled && vid.connected && vid.activeFps > 0) " · ${vid.activeFps}fps" else ""
+            val menuPart = if (repo.videoEnabled && vid.connected && vid.isFullMenuView) " · Menu" else ""
             val mpPart = if (st.connectedPlayers > 1) " (${st.connectedPlayers}/${st.maxPlayers}J)" else ""
-            statusPill.text = "● ${st.transportLabel}$pingPart$mpPart"
+            statusPill.text = "● $pingPart$fpsPart$menuPart$mpPart"
             statusPill.setTextColor(Color.parseColor("#4ADE80"))
         } else {
             playerBadge.visibility = View.GONE
             topAccentStrip.setBackgroundColor(Color.parseColor("#334155"))
-            statusPill.text = "○ Mode aperçu (hors-ligne)"
+            statusPill.text = "○ Hors-ligne"
             statusPill.setTextColor(Color.parseColor("#FBBF24"))
         }
     }
@@ -258,9 +428,9 @@ class GamepadActivity : AppCompatActivity() {
     private fun makeHudChip(label: String, bgHex: String = "#1E293B", onClick: () -> Unit): TextView {
         return TextView(this).apply {
             text = label
-            textSize = 11f
+            textSize = 10.5f
             setTextColor(Color.WHITE)
-            setPadding(dp(9), dp(4), dp(9), dp(4))
+            setPadding(dp(8), dp(4), dp(8), dp(4))
             background = GradientDrawable().apply {
                 setColor(Color.parseColor(bgHex))
                 cornerRadius = dp(12).toFloat()
@@ -268,7 +438,7 @@ class GamepadActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { leftMargin = dp(5) }
+            ).apply { leftMargin = dp(4) }
             setOnClickListener { onClick() }
         }
     }

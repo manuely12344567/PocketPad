@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 env:
-  APP_VERSION: '1.1.0'
+  APP_VERSION: '1.2.0'
 
 jobs:
   build-android:
@@ -143,22 +143,28 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION }}
-          name: PocketPad v${{ env.APP_VERSION }} — Multijoueur 4J · Android (.apk) & Windows (.exe)
+          name: PocketPad v${{ env.APP_VERSION }} — Mode Écran Switch & Split-Screen 4J · Android (.apk) & Windows (.exe)
           body: |
-            ## Téléchargements 1 clic — PocketPad v${{ env.APP_VERSION }} (Multijoueur jusqu’à 4 joueurs !)
+            ## Téléchargements 1 clic — PocketPad v${{ env.APP_VERSION }} (Mode « Nintendo Switch » & Split-Screen 4J !)
 
-            Jouez jusqu’à **4 amis simultanément** sur le même PC Windows en combinant librement **Câble USB (< 2 ms)**, **Bluetooth** et **Wi-Fi** (plusieurs téléphones sur le même mode ou des modes différents !).
+            Les spectateurs profitent du jeu complet sur l’écran du PC pendant que **chaque joueur joue sur son propre écran en direct sur son téléphone**, sous ses touches tactiles transparentes et personnalisables !
 
             ### Fichiers inclus
             - **Android :** `PocketPad-Android-${{ env.APP_VERSION }}.apk` — installe-le sur 1 à 4 téléphones Android (Android 8.0+).
             - **Windows (Installateur 1 clic) :** `PocketPad-Setup-${{ env.APP_VERSION }}.exe` — Bureau + Menu Démarrer + pont USB ADB embarqué.
             - **Windows (Portable 1 clic) :** `PocketPad-Portable-${{ env.APP_VERSION }}.exe` — autonome sans installation + pont USB ADB embarqué.
 
-            ### Nouveautés v${{ env.APP_VERSION }} — Multijoueur 4J
-            - **4 manettes virtuelles Xbox 360 indépendantes (J1, J2, J3, J4)** : chaque manette virtuelle se branche dynamiquement dans Windows quand un joueur rejoint et se débranche quand il quitte — idéal pour FIFA / EA FC, Rocket League, Mortal Kombat, Tekken, Overcooked, courses en écran partagé et émulateurs !
-            - **Mix libre de connexions** : par ex. J1 en câble USB + J2 en Bluetooth + J3 et J4 en Wi-Fi, ou plusieurs câbles USB branchés en même temps sur le PC.
-            - **Vibrations indépendantes par joueur** : le retour de force de chaque manette fait vibrer uniquement le bon téléphone !
-            - **Gestion en direct des joueurs** : 4 cartes colorées (`J1` Cyan, `J2` Violet, `J3` Vert, `J4` Orange) sur PC et badge joueur sur Android, permutation de slots (`J1 ⇄ J2`), reprise automatique du même slot en cas de reconnexion rapide, choix de place sur Android (`Auto / J1..J4`) et option *« Clavier/Souris réservé à J1 »*.
+            ### Nouveautés v${{ env.APP_VERSION }} — Mode Écran Switch & Split-Screen
+            - **Diffusion d’écran temps réel par joueur (DXGI GPU + repli GDI)** : canal vidéo TCP dédié (`27185`) séparé des entrées manette (`27183`) pour que tes boutons restent toujours `< 2 ms`, avec double tunnel USB ADB automatique et mode hybride Bluetooth + Wi-Fi.
+            - **Subdivision Split-Screen complète (onglet *Mode Écran Switch & Split-Screen*)** :
+              - Presets 1-clic : **Plein écran partagé**, **2J Haut/Bas**, **2J Gauche/Droite**, **3J (1+2)**, **4J Grille 2×2**, et **Zones personnalisées**.
+              - **Aperçu interactif en direct sur PC** : glisse et redimensionne à la souris les cadres colorés `J1` (Cyan), `J2` (Violet), `J3` (Vert), `J4` (Orange) sur le jeu.
+              - **Vue Menu (1 clic) + Auto-détection Menu ↔ Match** : affiche automatiquement tout l’écran dans les menus puis zoome sur la zone de chaque joueur dès que le split-screen démarre !
+              - **Rotation rapide des vues** (`Pivoter vues ↻`) + sélection multi-écrans PC + 4 profils de qualité/FPS.
+            - **Expérience Nintendo Switch sur Android** :
+              - **Bouton rapide `Écran: ON / OFF`** dans la barre supérieure en jeu.
+              - **Réglages `Opacité` en direct** : transparence des boutons (`15 %` → `100 %`), mode Ajuster / Remplir tout l’écran, et qualité vidéo.
+              - **Éditeur visuel sur fond de jeu** : place tes boutons autour du HUD réel du jeu !
           files: |
             release-assets/*
           draft: false

@@ -162,18 +162,13 @@ public static class PacketCodec
     {
         var json = JsonSerializer.Serialize(info, JsonOptions);
         var bytes = Encoding.UTF8.GetBytes(json);
-        if (bytes.Length > 250)
+        if (bytes.Length > 248)
         {
-            var truncated = new ServerInfoPayload(
-                info.PcName.Length > 24 ? info.PcName[..24] : info.PcName,
-                info.ViGemReady,
-                info.Mode,
-                info.Version,
-                info.PlayerSlot,
-                info.MaxPlayers,
-                info.ConnectedPlayers,
-                info.SlotColor
-            );
+            var truncated = info with
+            {
+                PcName = info.PcName.Length > 14 ? info.PcName[..14] : info.PcName,
+                SplitPreset = info.SplitPreset.Length > 10 ? info.SplitPreset[..10] : info.SplitPreset,
+            };
             bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(truncated, JsonOptions));
         }
         return EncodeFrame(PacketType.ServerInfo, bytes);

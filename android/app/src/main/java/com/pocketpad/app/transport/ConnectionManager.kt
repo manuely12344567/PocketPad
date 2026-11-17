@@ -47,6 +47,10 @@ data class ConnectionState(
     val maxPlayers: Int = PocketPadConstants.MAX_PLAYERS,
     val connectedPlayers: Int = 0,
     val slotColorHex: String = "#38BDF8",
+    val videoHost: String = "",
+    val videoPort: Int = PocketPadConstants.VIDEO_TCP_PORT,
+    val serverVideoEnabled: Boolean = true,
+    val splitPreset: String = "FullShared",
     val pingMs: Int = -1,
     val statusDetail: String = "Choisis Câble USB, Bluetooth ou Wi-Fi pour te connecter au PC (1 à 4 joueurs)",
     val lastError: String? = null,
@@ -61,6 +65,10 @@ private data class ServerInfoJson(
     val maxPlayers: Int? = null,
     val connectedPlayers: Int? = null,
     val slotColor: String? = null,
+    val videoPort: Int? = null,
+    val videoEnabled: Boolean? = null,
+    val splitPreset: String? = null,
+    val lanIp: String? = null,
 )
 
 /**
@@ -409,6 +417,11 @@ object ConnectionManager {
         writeQueue.clear()
         running.set(true)
 
+        val resolvedHost = when (kind) {
+            TransportKind.USB_ADB -> "127.0.0.1"
+            else -> tcp?.inetAddress?.hostAddress ?: ""
+        }
+
         updateState(
             ConnectionState(
                 connected = true,
@@ -421,6 +434,9 @@ object ConnectionManager {
                 maxPlayers = PocketPadConstants.MAX_PLAYERS,
                 connectedPlayers = 1,
                 slotColorHex = PocketPadConstants.slotColorHex(if (preferredSlot in 1..PocketPadConstants.MAX_PLAYERS) preferredSlot else 1),
+                videoHost = resolvedHost,
+                videoPort = PocketPadConstants.VIDEO_TCP_PORT,
+                serverVideoEnabled = true,
                 pingMs = -1,
                 statusDetail = "Connecté à $pcFallbackName ($label)",
                 lastError = null,
@@ -495,6 +511,10 @@ object ConnectionManager {
                                         val maxP = info.maxPlayers ?: PocketPadConstants.MAX_PLAYERS
                                         val connP = info.connectedPlayers ?: cur.connectedPlayers.coerceAtLeast(1)
                                         val sColor = info.slotColor?.takeIf { it.startsWith("#") } ?: PocketPadConstants.slotColorHex(slot)
+                                        val vPort = info.videoPort?.takeIf { it > 0 } ?: PocketPadConstants.VIDEO_TCP_PORT
+                                        val vEnabled = info.videoEnabled ?: cur.serverVideoEnabled
+                                        val vSplit = info.splitPreset?.takeIf { it.isNotBlank() } ?: cur.splitPreset
+                                        val vHost = cur.videoHost.ifBlank { info.lanIp?.trim().orEmpty() }
                                         val vigemText = if (vigem) "Xbox 360 J$slot + Clavier/Souris" else "Clavier/Souris actif"
                                         updateState(
                                             cur.copy(
@@ -504,6 +524,10 @@ object ConnectionManager {
                                                 maxPlayers = maxP,
                                                 connectedPlayers = connP,
                                                 slotColorHex = sColor,
+                                                videoHost = vHost,
+                                                videoPort = vPort,
+                                                serverVideoEnabled = vEnabled,
+                                                splitPreset = vSplit,
                                                 statusDetail = "$name · ${cur.transportLabel} · $connP/$maxP joueurs · $vigemText"
                                             )
                                         )
@@ -532,6 +556,7 @@ object ConnectionManager {
         }
 
         writeQueue.clear()
+        VideoStreamClient.stop("Déconnecté")
         try { tcpSocket?.close() } catch (_: Exception) {}
         try { btSocket?.close() } catch (_: Exception) {}
         tcpSocket = null

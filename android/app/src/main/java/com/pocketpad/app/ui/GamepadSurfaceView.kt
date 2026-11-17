@@ -1,8 +1,12 @@
 package com.pocketpad.app.ui
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.RectF
 import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
@@ -52,6 +56,15 @@ class GamepadSurfaceView(
     private var gyroEnabled: Boolean = false
     private var gyroX: Float = 0f
     private var gyroY: Float = 0f
+
+    // Nintendo Switch live PC screen backdrop + adjustable control opacity
+    @Volatile private var videoBitmap: Bitmap? = null
+    private var videoVisible: Boolean = true
+    private var videoFillScreen: Boolean = false
+    private var controlsOpacity: Float = 0.65f
+    private val videoPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val videoSrcRect = Rect()
+    private val videoDstRect = RectF()
 
     // Turbo auto-fire pulse
     private val turboHandler = Handler(Looper.getMainLooper())
@@ -117,18 +130,56 @@ class GamepadSurfaceView(
         invalidate()
     }
 
+    fun setVideoFrame(bmp: Bitmap?) {
+        videoBitmap = bmp
+        postInvalidateOnAnimation()
+    }
+
+    fun setVideoDisplayOptions(visible: Boolean, opacity: Float, fillScreen: Boolean) {
+        videoVisible = visible
+        controlsOpacity = opacity.coerceIn(0.15f, 1.0f)
+        videoFillScreen = fillScreen
+        invalidate()
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val w = width.toFloat()
         val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
 
+        // Draw live PC game video full-bleed behind the gamepad controls (Nintendo Switch mode)
+        val bmp = if (videoVisible) videoBitmap else null
+        val showingVideo = bmp != null && !bmp.isRecycled && bmp.width > 0 && bmp.height > 0
+        if (showingVideo && bmp != null) {
+            drawVideoBackdrop(canvas, bmp, w, h)
+        }
+
+        val opacityScale = if (showingVideo) controlsOpacity else 1.0f
+
         // Draw trackpads behind buttons so overlapping layouts stay clickable & visible
         val ordered = profile.elements.sortedBy { if (it.type == ControlType.TRACKPAD) 0 else 1 }
         for (el in ordered) {
             val st = visualStates[el.id] ?: ControlVisualState(toggledOn = toggledElementIds.contains(el.id))
-            GamepadRenderer.drawControl(canvas, el, w, h, st, selectedInEditor = false)
+            GamepadRenderer.drawControl(canvas, el, w, h, st, selectedInEditor = false, globalOpacityScale = opacityScale)
         }
+    }
+
+    private fun drawVideoBackdrop(canvas: Canvas, bmp: Bitmap, viewW: Float, viewH: Float) {
+        val bw = bmp.width.toFloat()
+        val bh = bmp.height.toFloat()
+        val scale = if (videoFillScreen) {
+            maxOf(viewW / bw, viewH / bh)
+        } else {
+            minOf(viewW / bw, viewH / bh)
+        }
+        val drawW = bw * scale
+        val drawH = bh * scale
+        val left = (viewW - drawW) / 2f
+        val top = (viewH - drawH) / 2f
+        videoSrcRect.set(0, 0, bmp.width, bmp.height)
+        videoDstRect.set(left, top, left + drawW, top + drawH)
+        canvas.drawBitmap(bmp, videoSrcRect, videoDstRect, videoPaint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {

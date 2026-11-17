@@ -140,6 +140,22 @@ class ProfileRepository(context: Context) {
         get() = prefs.getInt(KEY_PREFERRED_SLOT, 0).coerceIn(0, 4)
         set(value) = prefs.edit().putInt(KEY_PREFERRED_SLOT, value.coerceIn(0, 4)).apply()
 
+    var videoEnabled: Boolean
+        get() = prefs.getBoolean(KEY_VIDEO_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_VIDEO_ENABLED, value).apply()
+
+    var controlsOpacity: Float
+        get() = prefs.getFloat(KEY_CONTROLS_OPACITY, 0.65f).coerceIn(0.15f, 1.0f)
+        set(value) = prefs.edit().putFloat(KEY_CONTROLS_OPACITY, value.coerceIn(0.15f, 1.0f)).apply()
+
+    var videoFillScreen: Boolean
+        get() = prefs.getBoolean(KEY_VIDEO_FILL, false)
+        set(value) = prefs.edit().putBoolean(KEY_VIDEO_FILL, value).apply()
+
+    var videoQuality: Int
+        get() = prefs.getInt(KEY_VIDEO_QUALITY, 62).coerceIn(35, 85)
+        set(value) = prefs.edit().putInt(KEY_VIDEO_QUALITY, value.coerceIn(35, 85)).apply()
+
     companion object {
         private const val KEY_PROFILES = "profiles_v1"
         private const val KEY_ACTIVE_PROFILE = "active_profile_id"
@@ -147,5 +163,9 @@ class ProfileRepository(context: Context) {
         private const val KEY_LAST_BT = "last_bt_mac"
         private const val KEY_CLIENT_ID = "device_client_id"
         private const val KEY_PREFERRED_SLOT = "preferred_player_slot"
+        private const val KEY_VIDEO_ENABLED = "switch_video_enabled"
+        private const val KEY_CONTROLS_OPACITY = "switch_controls_opacity"
+        private const val KEY_VIDEO_FILL = "switch_video_fill"
+        private const val KEY_VIDEO_QUALITY = "switch_video_quality"
     }
 }

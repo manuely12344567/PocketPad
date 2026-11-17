@@ -3,11 +3,16 @@
 Ultra-low-latency framed binary protocol used identically over **USB (ADB Reverse / USB Tethering TCP)**, **Bluetooth RFCOMM SPP**, and **Wi-Fi LAN TCP**.
 
 ## Constants
-- **Protocol Version**: `1.1` (backwards compatible with `1.0`)
+- **Protocol Version**: `1.2` (backwards compatible with `1.0` & `1.1`)
 - **Max Simultaneous Players**: `4` (`J1` `#38BDF8`, `J2` `#A855F7`, `J3` `#22C55E`, `J4` `#F97316`)
-- **TCP Port**: `27183` (`TCP_NODELAY = true`)
-- **UDP Discovery Port**: `27184` (Broadcast payload: `POCKETPAD_DISCOVER_V1`, Response: `POCKETPAD_SERVER_V1|<PC_NAME>|<PORT>|<VIGEM_READY>|<CONNECTED_PLAYERS>|<MAX_PLAYERS>`)
+- **Gamepad / Input TCP Port**: `27183` (`TCP_NODELAY = true`)
+- **Live Switch Screen Video TCP Port**: `27185` (`TCP_NODELAY = true`, independent from inputs; automatically forwarded over USB via `adb reverse tcp:27185 tcp:27185`)
+- **UDP Discovery Port**: `27184` (Broadcast payload: `POCKETPAD_DISCOVER_V1`, Response: `POCKETPAD_SERVER_V1|<PC_NAME>|<PORT>|<VIGEM_READY>|<CONNECTED_PLAYERS>|<MAX_PLAYERS>|<VIDEO_PORT>`)
 - **Bluetooth RFCOMM Service UUID**: `e8f1a4b0-7c2d-4e9a-9f31-706f636b6574`
+
+## Video Stream Channel (TCP Port `27185`)
+- **Client → Server Subscribe/Control (10 bytes)**: `0x50 0x56` (`"PV"`) | `ver=1` | `cmd (1=Subscribe, 2=Pause, 3=Resume)` | `slot (1..4)` | `maxWidth (uint16 LE)` | `maxHeight (uint16 LE)` | `quality (30..85)`
+- **Server → Client Frame (12-byte header + JPEG)**: `0x50 0x56` (`"PV"`) | `slot (1..4)` | `flags (bit0=FullMenu, bit1=AutoSplit)` | `width (uint16 LE)` | `height (uint16 LE)` | `len (uint32 LE)` | `jpegBytes[len]`
 
 ## Frame Header (4 bytes)
 | Offset | Size | Field | Value |

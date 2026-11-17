@@ -1,8 +1,13 @@
-# PocketPad v1.1.0 — Manette Multijoueur (1–4J) Android vers PC Windows
+# PocketPad v1.2.0 — Manette Multijoueur (1–4J) & Mode Écran Switch vers PC Windows
 
-**PocketPad** transforme de **1 à 4 téléphones Android simultanément** en **véritables manettes de jeu PC** (jusqu’à **4 manettes Xbox 360 virtuelles indépendantes** + **Clavier/Souris**) en combinant librement **câble USB (< 2 ms)**, **Bluetooth sans fil** et **Wi-Fi**, avec un **éditeur visuel complet** sur chaque téléphone.
+**PocketPad** transforme de **1 à 4 téléphones Android simultanément** en **véritables manettes de jeu PC avec écran en direct façon Nintendo Switch** (jusqu’à **4 manettes Xbox 360 virtuelles indépendantes** + **Clavier/Souris** + **diffusion Split-Screen J1–J4**) en combinant librement **câble USB (< 2 ms)**, **Bluetooth sans fil** et **Wi-Fi**, avec un **éditeur visuel complet** sur chaque téléphone.
 
 ## Fonctionnalités clés
+
+- **Mode Écran Switch & Split-Screen en direct (v1.2.0)** :
+  - **Capture GPU DXGI Desktop Duplication** (repli GDI automatique) sur un canal vidéo TCP dédié (`27185`) séparé des entrées manette (`27183`).
+  - **Subdivision Split-Screen 1-clic & sur mesure** : Plein écran partagé, 2J Haut/Bas, 2J Gauche/Droite, 3J (1+2), 4J Grille 2×2, cadres déplaçables/redimensionnables sur aperçu PC, **Vue Menu 1-clic** et **Auto-détection Menu ↔ Match**.
+  - **Touches semi-transparentes sur Android** : curseur d’opacité (`15 %`–`100 %`), bouton rapide `Écran: ON/OFF`, mode Ajuster/Remplir, et éditeur visuel avec aperçu du jeu en arrière-plan.
 
 - **Multijoueur jusqu’à 4 joueurs simultanés (J1, J2, J3, J4)** :
   - **Mix total des connexions** : 2 téléphones en câble USB + 1 en Bluetooth + 1 en Wi-Fi, ou tous sur la même méthode — tout fonctionne ensemble !

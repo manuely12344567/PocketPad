@@ -216,17 +216,21 @@ public sealed class AdbUsbBridge : IDisposable
             var activeSet = authorized.Select(a => a.Serial).ToHashSet(StringComparer.Ordinal);
             _forwardedSerials.RemoveWhere(s => !activeSet.Contains(s));
 
-            // Ensure reverse TCP tunnel on every plugged-in authorized Android device
+            // Ensure reverse TCP tunnels (Gamepad 27183 + Live Switch Video 27185) on every plugged-in Android device
             foreach (var (serial, model) in authorized)
             {
                 var (revCode, _, revErr) = await RunAdbAsync(
                     $"-s \"{serial}\" reverse tcp:{PocketPadConstants.TcpPort} tcp:{PocketPadConstants.TcpPort}",
                     ct
                 );
+                await RunAdbAsync(
+                    $"-s \"{serial}\" reverse tcp:{PocketPadConstants.VideoTcpPort} tcp:{PocketPadConstants.VideoTcpPort}",
+                    ct
+                );
 
                 if (revCode == 0 && _forwardedSerials.Add(serial))
                 {
-                    _log($"Tunnel USB activé automatiquement sur {model} ({serial}) → port {PocketPadConstants.TcpPort}");
+                    _log($"Tunnel USB activé automatiquement sur {model} ({serial}) → manette {PocketPadConstants.TcpPort} + vidéo {PocketPadConstants.VideoTcpPort}");
                 }
                 else if (revCode != 0)
                 {
