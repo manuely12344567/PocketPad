@@ -3,8 +3,10 @@
 Ultra-low-latency framed binary protocol used identically over **USB (ADB Reverse / USB Tethering TCP)**, **Bluetooth RFCOMM SPP**, and **Wi-Fi LAN TCP**.
 
 ## Constants
+- **Protocol Version**: `1.1` (backwards compatible with `1.0`)
+- **Max Simultaneous Players**: `4` (`J1` `#38BDF8`, `J2` `#A855F7`, `J3` `#22C55E`, `J4` `#F97316`)
 - **TCP Port**: `27183` (`TCP_NODELAY = true`)
-- **UDP Discovery Port**: `27184` (Broadcast payload: `POCKETPAD_DISCOVER_V1`, Response: `POCKETPAD_SERVER_V1|<PC_NAME>|<PORT>|<VIGEM_READY>`)
+- **UDP Discovery Port**: `27184` (Broadcast payload: `POCKETPAD_DISCOVER_V1`, Response: `POCKETPAD_SERVER_V1|<PC_NAME>|<PORT>|<VIGEM_READY>|<CONNECTED_PLAYERS>|<MAX_PLAYERS>`)
 - **Bluetooth RFCOMM Service UUID**: `e8f1a4b0-7c2d-4e9a-9f31-706f636b6574`
 
 ## Frame Header (4 bytes)

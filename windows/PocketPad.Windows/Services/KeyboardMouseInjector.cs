@@ -4,44 +4,48 @@ using PocketPad.Core.Protocol;
 namespace PocketPad.Windows.Services;
 
 /// <summary>
-/// Zero-driver Win32 SendInput injector for PC keyboard (using hardware scan codes so DirectX/DirectInput games
-/// recognize every key reliably) and relative mouse movement, clicks, and scroll wheel.
-/// Guarantees zero stuck keys on disconnect via ReleaseAll().
+/// Multiplayer-safe Win32 SendInput injector using hardware scan codes (DirectInput/DirectX compatible).
+/// Tracks held keys and mouse buttons per session ID so one player disconnecting never releases keys held by another player!
 /// </summary>
 public sealed class KeyboardMouseInjector
 {
     private readonly object _sync = new();
-    private readonly HashSet<ushort> _heldKeys = new();
-    private bool _leftMouseHeld;
-    private bool _rightMouseHeld;
-    private bool _middleMouseHeld;
+    private readonly Dictionary<long, HashSet<ushort>> _keysByOwner = new();
+    private readonly Dictionary<long, HashSet<int>> _mouseByOwner = new();
 
-    public void HandleKeyboard(in KeyboardCommand cmd)
+    public void HandleKeyboard(long ownerId, in KeyboardCommand cmd)
     {
         lock (_sync)
         {
+            var owned = GetOrCreateSet(_keysByOwner, ownerId);
             switch (cmd.Action)
             {
                 case KeyboardAction.KeyDown:
-                    if (_heldKeys.Add(cmd.VirtualKeyCode))
+                    bool wasHeldAnywhere = IsKeyHeldByAnyone(cmd.VirtualKeyCode);
+                    if (owned.Add(cmd.VirtualKeyCode) && !wasHeldAnywhere)
+                    {
                         SendKey(cmd.VirtualKeyCode, isKeyUp: false);
+                    }
                     break;
 
                 case KeyboardAction.KeyUp:
-                    _heldKeys.Remove(cmd.VirtualKeyCode);
-                    SendKey(cmd.VirtualKeyCode, isKeyUp: true);
+                    owned.Remove(cmd.VirtualKeyCode);
+                    if (!IsKeyHeldByAnyone(cmd.VirtualKeyCode))
+                    {
+                        SendKey(cmd.VirtualKeyCode, isKeyUp: true);
+                    }
                     break;
 
                 case KeyboardAction.Tap:
                     SendKey(cmd.VirtualKeyCode, isKeyUp: false);
                     SendKey(cmd.VirtualKeyCode, isKeyUp: true);
-                    _heldKeys.Remove(cmd.VirtualKeyCode);
+                    owned.Remove(cmd.VirtualKeyCode);
                     break;
             }
         }
     }
 
-    public void HandleMouse(in MouseCommand cmd)
+    public void HandleMouse(long ownerId, in MouseCommand cmd)
     {
         lock (_sync)
         {
@@ -55,60 +59,61 @@ public sealed class KeyboardMouseInjector
                 SendMouse(MOUSEEVENTF_WHEEL, 0, 0, (uint)cmd.WheelDelta);
             }
 
+            var ownedMouse = GetOrCreateSet(_mouseByOwner, ownerId);
             switch (cmd.ButtonAction)
             {
                 case MouseButtonAction.LeftDown:
-                    if (!_leftMouseHeld)
-                    {
-                        _leftMouseHeld = true;
-                        SendMouse(MOUSEEVENTF_LEFTDOWN, 0, 0, 0);
-                    }
+                    SetMouseButtonLocked(ownedMouse, 1, down: true);
                     break;
                 case MouseButtonAction.LeftUp:
-                    if (_leftMouseHeld)
-                    {
-                        _leftMouseHeld = false;
-                        SendMouse(MOUSEEVENTF_LEFTUP, 0, 0, 0);
-                    }
+                    SetMouseButtonLocked(ownedMouse, 1, down: false);
                     break;
                 case MouseButtonAction.RightDown:
-                    if (!_rightMouseHeld)
-                    {
-                        _rightMouseHeld = true;
-                        SendMouse(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0);
-                    }
+                    SetMouseButtonLocked(ownedMouse, 2, down: true);
                     break;
                 case MouseButtonAction.RightUp:
-                    if (_rightMouseHeld)
-                    {
-                        _rightMouseHeld = false;
-                        SendMouse(MOUSEEVENTF_RIGHTUP, 0, 0, 0);
-                    }
+                    SetMouseButtonLocked(ownedMouse, 2, down: false);
                     break;
                 case MouseButtonAction.MiddleDown:
-                    if (!_middleMouseHeld)
-                    {
-                        _middleMouseHeld = true;
-                        SendMouse(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0);
-                    }
+                    SetMouseButtonLocked(ownedMouse, 3, down: true);
                     break;
                 case MouseButtonAction.MiddleUp:
-                    if (_middleMouseHeld)
-                    {
-                        _middleMouseHeld = false;
-                        SendMouse(MOUSEEVENTF_MIDDLEUP, 0, 0, 0);
-                    }
+                    SetMouseButtonLocked(ownedMouse, 3, down: false);
                     break;
                 case MouseButtonAction.LeftClick:
                     SendMouse(MOUSEEVENTF_LEFTDOWN, 0, 0, 0);
                     SendMouse(MOUSEEVENTF_LEFTUP, 0, 0, 0);
-                    _leftMouseHeld = false;
+                    ownedMouse.Remove(1);
                     break;
                 case MouseButtonAction.RightClick:
                     SendMouse(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0);
                     SendMouse(MOUSEEVENTF_RIGHTUP, 0, 0, 0);
-                    _rightMouseHeld = false;
+                    ownedMouse.Remove(2);
                     break;
+            }
+        }
+    }
+
+    public void ReleaseOwner(long ownerId)
+    {
+        lock (_sync)
+        {
+            if (_keysByOwner.Remove(ownerId, out var keys))
+            {
+                foreach (var vk in keys)
+                {
+                    if (!IsKeyHeldByAnyone(vk))
+                        SendKey(vk, isKeyUp: true);
+                }
+            }
+
+            if (_mouseByOwner.Remove(ownerId, out var buttons))
+            {
+                foreach (var btn in buttons)
+                {
+                    if (!IsMouseHeldByAnyone(btn))
+                        SendMouseButtonRaw(btn, down: false);
+                }
             }
         }
     }
@@ -117,28 +122,56 @@ public sealed class KeyboardMouseInjector
     {
         lock (_sync)
         {
-            foreach (var vk in _heldKeys.ToArray())
+            foreach (var owner in _keysByOwner.Keys.ToArray())
             {
-                SendKey(vk, isKeyUp: true);
+                ReleaseOwner(owner);
             }
-            _heldKeys.Clear();
-
-            if (_leftMouseHeld)
+            foreach (var owner in _mouseByOwner.Keys.ToArray())
             {
-                SendMouse(MOUSEEVENTF_LEFTUP, 0, 0, 0);
-                _leftMouseHeld = false;
-            }
-            if (_rightMouseHeld)
-            {
-                SendMouse(MOUSEEVENTF_RIGHTUP, 0, 0, 0);
-                _rightMouseHeld = false;
-            }
-            if (_middleMouseHeld)
-            {
-                SendMouse(MOUSEEVENTF_MIDDLEUP, 0, 0, 0);
-                _middleMouseHeld = false;
+                ReleaseOwner(owner);
             }
         }
+    }
+
+    private void SetMouseButtonLocked(HashSet<int> ownedMouse, int btn, bool down)
+    {
+        if (down)
+        {
+            bool heldAnywhere = IsMouseHeldByAnyone(btn);
+            if (ownedMouse.Add(btn) && !heldAnywhere)
+                SendMouseButtonRaw(btn, down: true);
+        }
+        else
+        {
+            ownedMouse.Remove(btn);
+            if (!IsMouseHeldByAnyone(btn))
+                SendMouseButtonRaw(btn, down: false);
+        }
+    }
+
+    private static void SendMouseButtonRaw(int btn, bool down)
+    {
+        uint flag = btn switch
+        {
+            1 => down ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP,
+            2 => down ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP,
+            3 => down ? MOUSEEVENTF_MIDDLEDOWN : MOUSEEVENTF_MIDDLEUP,
+            _ => 0u
+        };
+        if (flag != 0u) SendMouse(flag, 0, 0, 0);
+    }
+
+    private bool IsKeyHeldByAnyone(ushort vk) => _keysByOwner.Values.Any(s => s.Contains(vk));
+    private bool IsMouseHeldByAnyone(int btn) => _mouseByOwner.Values.Any(s => s.Contains(btn));
+
+    private static HashSet<T> GetOrCreateSet<T>(Dictionary<long, HashSet<T>> map, long id)
+    {
+        if (!map.TryGetValue(id, out var set))
+        {
+            set = new HashSet<T>();
+            map[id] = set;
+        }
+        return set;
     }
 
     private static void SendKey(ushort vk, bool isKeyUp)
@@ -190,11 +223,11 @@ public sealed class KeyboardMouseInjector
     }
 
     private static bool IsExtendedKey(ushort vk) => vk is
-        0x21 or 0x22 or 0x23 or 0x24 or // PageUp/Down, End, Home
-        0x25 or 0x26 or 0x27 or 0x28 or // Arrows
-        0x2D or 0x2E or                 // Insert, Delete
-        0xA3 or 0xA5 or                 // RControl, RAlt
-        0x5B or 0x5C;                   // LWin, RWin
+        0x21 or 0x22 or 0x23 or 0x24 or
+        0x25 or 0x26 or 0x27 or 0x28 or
+        0x2D or 0x2E or
+        0xA3 or 0xA5 or
+        0x5B or 0x5C;
 
     private const uint INPUT_MOUSE = 0;
     private const uint INPUT_KEYBOARD = 1;

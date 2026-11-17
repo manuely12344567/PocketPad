@@ -165,10 +165,14 @@ public static class PacketCodec
         if (bytes.Length > 250)
         {
             var truncated = new ServerInfoPayload(
-                info.PcName.Length > 32 ? info.PcName[..32] : info.PcName,
+                info.PcName.Length > 24 ? info.PcName[..24] : info.PcName,
                 info.ViGemReady,
                 info.Mode,
-                info.Version
+                info.Version,
+                info.PlayerSlot,
+                info.MaxPlayers,
+                info.ConnectedPlayers,
+                info.SlotColor
             );
             bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(truncated, JsonOptions));
         }
@@ -186,7 +190,9 @@ public static class PacketCodec
                 return new ClientHelloInfo(
                     string.IsNullOrWhiteSpace(parsed.Name) ? "Téléphone Android" : parsed.Name,
                     string.IsNullOrWhiteSpace(parsed.Profile) ? "Manette" : parsed.Profile,
-                    string.IsNullOrWhiteSpace(parsed.Transport) ? "usb" : parsed.Transport
+                    string.IsNullOrWhiteSpace(parsed.Transport) ? "usb" : parsed.Transport,
+                    string.IsNullOrWhiteSpace(parsed.ClientId) ? "" : parsed.ClientId.Trim(),
+                    parsed.PreferredSlot is >= 1 and <= PocketPadConstants.MaxPlayers ? parsed.PreferredSlot : 0
                 );
             }
         }

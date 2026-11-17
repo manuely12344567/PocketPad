@@ -39,6 +39,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusCard: LinearLayout
     private lateinit var btnDisconnect: TextView
     private lateinit var profilesContainer: LinearLayout
+    private val slotChips = mutableListOf<TextView>()
 
     private val btPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -87,7 +88,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         repo = ProfileRepository(this)
+        ConnectionManager.configureIdentity(repo.clientId, repo.preferredSlot)
         setContentView(buildUi())
+        refreshSlotChips()
     }
 
     override fun onResume() {
@@ -134,8 +137,8 @@ class MainActivity : AppCompatActivity() {
             setTextColor(Color.parseColor("#F1F5F9"))
         })
         titleCol.addView(TextView(this).apply {
-            text = "Manette de jeu USB & Bluetooth vers PC Windows · v${PocketPadConstants.APP_VERSION}"
-            textSize = 12.5f
+            text = "Manette Multijoueur (1–4J) · USB, Bluetooth & Wi-Fi · v${PocketPadConstants.APP_VERSION}"
+            textSize = 12f
             setTextColor(Color.parseColor("#94A3B8"))
         })
         header.addView(titleCol)
@@ -240,6 +243,50 @@ class MainActivity : AppCompatActivity() {
         row2.addView(btnBt)
         row2.addView(btnWifi)
         connCard.addView(row2)
+
+        // Multiplayer Slot Picker (Auto / J1 / J2 / J3 / J4)
+        val slotRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(12) }
+        }
+        slotRow.addView(TextView(this).apply {
+            text = "Place joueur :"
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#94A3B8"))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { rightMargin = dp(8) }
+        })
+        slotChips.clear()
+        val slotLabels = listOf("Auto", "J1", "J2", "J3", "J4")
+        slotLabels.forEachIndexed { idx, label ->
+            val chip = TextView(this).apply {
+                text = label
+                textSize = 11.5f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    if (idx > 0) leftMargin = dp(5)
+                }
+                setOnClickListener {
+                    repo.preferredSlot = idx
+                    ConnectionManager.requestPreferredSlot(idx)
+                    refreshSlotChips()
+                    val msg = if (idx == 0) "Attribution automatique du joueur activée" else "Place souhaitée : Joueur $idx"
+                    Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
+                }
+            }
+            slotChips.add(chip)
+            slotRow.addView(chip)
+        }
+        connCard.addView(slotRow)
         root.addView(connCard)
 
         // Play & Edit Primary CTA Card
@@ -329,11 +376,12 @@ class MainActivity : AppCompatActivity() {
 
         // Help card
         val helpCard = makeCard()
-        helpCard.addView(makeSectionTitle("GUIDE RAPIDE USB & BLUETOOTH"))
+        helpCard.addView(makeSectionTitle("GUIDE RAPIDE MULTIJOUEUR (USB, BLUETOOTH & WI-FI)"))
         helpCard.addView(TextView(this).apply {
-            text = "• Câble USB (ADB · recommandé) : sur ton téléphone, active « Débogage USB » dans Options développeur, branche le câble et ouvre PocketPad.exe sur Windows. Appuie ensuite sur « Connexion Câble USB ».\n" +
-                "• Câble USB sans options développeur : branche le câble, active « Partage de connexion USB » dans Paramètres Android, puis appuie sur « Connexion Câble USB ».\n" +
-                "• Bluetooth : associe d’abord ton téléphone au PC dans les réglages Bluetooth Windows, ouvre PocketPad.exe, puis clique sur « Bluetooth » ici."
+            text = "• Multijoueur jusqu’à 4 joueurs simultanés : chaque ami installe PocketPad sur son téléphone et se connecte au même PC (en mixant librement Câble USB, Bluetooth et Wi-Fi !).\n" +
+                "• Câble USB (ADB · < 2 ms) : active « Débogage USB » sur Android, branche le câble et appuie sur « Connexion Câble USB » (plusieurs câbles USB en même temps sont supportés !).\n" +
+                "• Bluetooth : associe le téléphone au PC dans Windows Bluetooth, puis clique sur « Bluetooth » ici.\n" +
+                "• Wi-Fi : sur le même Wi-Fi ou point d’accès, clique sur « Wi-Fi / IP → Auto-Scan réseau »."
             textSize = 12f
             setTextColor(Color.parseColor("#94A3B8"))
             setLineSpacing(dp(3).toFloat(), 1f)
@@ -559,7 +607,9 @@ class MainActivity : AppCompatActivity() {
                         if (servers.isEmpty()) {
                             Toast.makeText(this, "Aucun PC trouvé automatiquement. Saisis l’IP manuellement.", Toast.LENGTH_LONG).show()
                         } else {
-                            val labels = servers.map { "${it.pcName} (${it.ip})" }.toTypedArray()
+                            val labels = servers.map {
+                                "${it.pcName} (${it.ip}) · ${it.connectedPlayers}/${it.maxPlayers} joueurs"
+                            }.toTypedArray()
                             AlertDialog.Builder(this)
                                 .setTitle("PC détectés")
                                 .setItems(labels) { _, idx ->
@@ -582,11 +632,15 @@ class MainActivity : AppCompatActivity() {
 
         when {
             st.connected -> {
-                txtStatusTitle.text = "● Connecté : ${st.pcName.ifBlank { "PC Windows" }}"
-                txtStatusTitle.setTextColor(Color.parseColor("#4ADE80"))
-                statusCard.background = roundRect("#09261D", "#16A34A", 14)
-                txtPingBadge.text = if (st.pingMs >= 0) "${st.transportLabel} · ${st.pingMs} ms" else st.transportLabel
-                txtPingBadge.setTextColor(Color.parseColor("#4ADE80"))
+                val slotNum = st.playerSlot.coerceIn(1, PocketPadConstants.MAX_PLAYERS)
+                val slotHex = st.slotColorHex.ifBlank { PocketPadConstants.slotColorHex(slotNum) }
+                txtStatusTitle.text = "● JOUEUR $slotNum · ${st.pcName.ifBlank { "PC Windows" }}"
+                txtStatusTitle.setTextColor(Color.parseColor(slotHex))
+                statusCard.background = roundRect("#0B1F2E", slotHex, 14)
+                val pingPart = if (st.pingMs >= 0) " · ${st.pingMs} ms" else ""
+                txtPingBadge.text = "J$slotNum · ${st.connectedPlayers}/${st.maxPlayers}J$pingPart"
+                txtPingBadge.setTextColor(Color.parseColor(slotHex))
+                txtPingBadge.background = roundRect("#0F1D33", slotHex, 14)
             }
             st.connecting -> {
                 txtStatusTitle.text = "◌ ${st.transportLabel}"
@@ -594,6 +648,7 @@ class MainActivity : AppCompatActivity() {
                 statusCard.background = roundRect("#0D1D36", "#38BDF8", 14)
                 txtPingBadge.text = "Connexion…"
                 txtPingBadge.setTextColor(Color.parseColor("#38BDF8"))
+                txtPingBadge.background = roundRect("#18223A", "#38BDF8", 14)
             }
             else -> {
                 txtStatusTitle.text = "○ Non connecté au PC"
@@ -601,7 +656,24 @@ class MainActivity : AppCompatActivity() {
                 statusCard.background = roundRect("#11182B", "#243150", 14)
                 txtPingBadge.text = "Hors-ligne"
                 txtPingBadge.setTextColor(Color.parseColor("#94A3B8"))
+                txtPingBadge.background = roundRect("#18223A", "#2D3E63", 14)
             }
+        }
+    }
+
+    private fun refreshSlotChips() {
+        val selected = repo.preferredSlot
+        slotChips.forEachIndexed { idx, chip ->
+            val active = idx == selected
+            val accent = if (idx == 0) "#38BDF8" else PocketPadConstants.slotColorHex(idx)
+            chip.background = roundRect(
+                if (active) accent else "#0D1426",
+                if (active) accent else "#243150",
+                10
+            )
+            chip.setTextColor(
+                if (active) Color.parseColor("#090D1A") else Color.parseColor("#CBD5E1")
+            )
         }
     }
 

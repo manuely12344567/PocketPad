@@ -127,10 +127,25 @@ class ProfileRepository(context: Context) {
         get() = prefs.getString(KEY_LAST_BT, null)
         set(value) = prefs.edit().putString(KEY_LAST_BT, value).apply()
 
+    val clientId: String
+        get() {
+            val existing = prefs.getString(KEY_CLIENT_ID, null)
+            if (!existing.isNullOrBlank()) return existing
+            val generated = "pp_${UUID.randomUUID().toString().replace("-", "").take(12)}"
+            prefs.edit().putString(KEY_CLIENT_ID, generated).apply()
+            return generated
+        }
+
+    var preferredSlot: Int
+        get() = prefs.getInt(KEY_PREFERRED_SLOT, 0).coerceIn(0, 4)
+        set(value) = prefs.edit().putInt(KEY_PREFERRED_SLOT, value.coerceIn(0, 4)).apply()
+
     companion object {
         private const val KEY_PROFILES = "profiles_v1"
         private const val KEY_ACTIVE_PROFILE = "active_profile_id"
         private const val KEY_LAST_IP = "last_tcp_ip"
         private const val KEY_LAST_BT = "last_bt_mac"
+        private const val KEY_CLIENT_ID = "device_client_id"
+        private const val KEY_PREFERRED_SLOT = "preferred_player_slot"
     }
 }

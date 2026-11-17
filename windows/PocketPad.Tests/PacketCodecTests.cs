@@ -1,3 +1,4 @@
+using PocketPad.Core.Multiplayer;
 using PocketPad.Core.Protocol;
 using Xunit;
 
@@ -94,7 +95,7 @@ public class PacketCodecTests
     public void HelloAndServerInfo_EncodeDecodeProperly()
     {
         var serverFrame = PacketCodec.EncodeServerInfo(
-            new ServerInfoPayload("GAMING-PC", true, "auto", PocketPadConstants.AppVersion)
+            new ServerInfoPayload("GAMING-PC", true, "auto", PocketPadConstants.AppVersion, PlayerSlot: 2, MaxPlayers: 4, ConnectedPlayers: 3, SlotColor: "#A855F7")
         );
         var reader = new FrameStreamReader();
         DecodedPacket? pkt = null;
@@ -105,5 +106,86 @@ public class PacketCodecTests
         var json = System.Text.Encoding.UTF8.GetString(pkt.Value.Payload);
         Assert.Contains("GAMING-PC", json);
         Assert.Contains("\"vigemReady\":true", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"playerSlot\":2", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"connectedPlayers\":3", json, StringComparison.OrdinalIgnoreCase);
+
+        var helloBytes = System.Text.Encoding.UTF8.GetBytes(
+            """{"name":"Galaxy S24","profile":"Xbox 360","transport":"bluetooth","clientId":"dev-xyz","preferredSlot":3}"""
+        );
+        var hello = PacketCodec.DecodeHello(helloBytes);
+        Assert.Equal("Galaxy S24", hello.Name);
+        Assert.Equal("dev-xyz", hello.ClientId);
+        Assert.Equal(3, hello.PreferredSlot);
+    }
+
+    private sealed class FakeSession
+    {
+        public string ClientId { get; set; } = "";
+    }
+
+    [Fact]
+    public void PlayerSlotRegistry_Supports4SimultaneousPlayers_ReconnectAndSwap()
+    {
+        var reg = new PlayerSlotRegistry<FakeSession>(4);
+
+        var p1 = new FakeSession { ClientId = "phone-usb" };
+        var p2 = new FakeSession { ClientId = "phone-bt" };
+        var p3 = new FakeSession { ClientId = "phone-wifi" };
+        var p4 = new FakeSession { ClientId = "phone-usb2" };
+        var p5 = new FakeSession { ClientId = "phone-extra" };
+
+        Assert.Equal(1, reg.AllocateInitialSlot(p1));
+        Assert.Equal(2, reg.AllocateInitialSlot(p2));
+        Assert.Equal(3, reg.AllocateInitialSlot(p3));
+        Assert.Equal(4, reg.AllocateInitialSlot(p4));
+        Assert.Equal(0, reg.AllocateInitialSlot(p5)); // 5th rejected cleanly when room full
+        Assert.Equal(4, reg.ConnectedCount);
+
+        // Register identities
+        Assert.Equal(1, reg.ApplyIdentity(p1, p1.ClientId, 0, s => s.ClientId, out var ev1));
+        Assert.Null(ev1);
+        Assert.Equal(2, reg.ApplyIdentity(p2, p2.ClientId, 0, s => s.ClientId, out var ev2));
+        Assert.Null(ev2);
+
+        // Player 2 drops and reconnects -> reclaims slot 2 cleanly!
+        Assert.Equal(2, reg.Release(p2));
+        Assert.Equal(3, reg.ConnectedCount);
+
+        var p2Reconnect = new FakeSession { ClientId = "phone-bt" };
+        var initial = reg.AllocateInitialSlot(p2Reconnect);
+        Assert.Equal(2, initial);
+        var finalSlot = reg.ApplyIdentity(p2Reconnect, p2Reconnect.ClientId, 0, s => s.ClientId, out var evRec);
+        Assert.Equal(2, finalSlot);
+        Assert.Null(evRec);
+
+        // Swap Player 1 <-> Player 3
+        Assert.True(reg.TryMoveOrSwap(1, 3, out var at1, out var at3));
+        Assert.Same(p3, at1);
+        Assert.Same(p1, at3);
+        Assert.Equal(3, reg.GetSlotOf(p1));
+        Assert.Equal(1, reg.GetSlotOf(p3));
+    }
+
+    [Fact]
+    public void PlayerSlotRegistry_PreferredSlotAndDuplicateClientEviction()
+    {
+        var reg = new PlayerSlotRegistry<FakeSession>(4);
+
+        var p1 = new FakeSession { ClientId = "phone-a" };
+        Assert.Equal(1, reg.AllocateInitialSlot(p1));
+        // Phone A explicitly requests slot 3 -> moves from 1 to 3
+        Assert.Equal(3, reg.ApplyIdentity(p1, p1.ClientId, preferredSlot: 3, s => s.ClientId, out var ev0));
+        Assert.Null(ev0);
+        Assert.Null(reg.GetAtSlot(1));
+        Assert.Same(p1, reg.GetAtSlot(3));
+
+        // Same phone reconnects before old TCP timeout -> evicts stale session and keeps slot 3!
+        var p1Fresh = new FakeSession { ClientId = "phone-a" };
+        Assert.Equal(1, reg.AllocateInitialSlot(p1Fresh));
+        var assigned = reg.ApplyIdentity(p1Fresh, p1Fresh.ClientId, preferredSlot: 0, s => s.ClientId, out var evicted);
+        Assert.Equal(3, assigned);
+        Assert.Same(p1, evicted);
+        Assert.Null(reg.GetAtSlot(1));
+        Assert.Same(p1Fresh, reg.GetAtSlot(3));
     }
 }

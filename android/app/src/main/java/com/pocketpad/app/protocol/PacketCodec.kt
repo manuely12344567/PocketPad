@@ -5,7 +5,8 @@ import java.nio.ByteOrder
 import java.util.UUID
 
 object PocketPadConstants {
-    const val APP_VERSION = "1.0.0"
+    const val APP_VERSION = "1.1.0"
+    const val MAX_PLAYERS = 4
     const val TCP_PORT = 27183
     const val UDP_DISCOVERY_PORT = 27184
     const val DISCOVERY_REQUEST = "POCKETPAD_DISCOVER_V1"
@@ -15,6 +16,14 @@ object PocketPadConstants {
 
     const val MAGIC_0: Byte = 0x50 // 'P'
     const val MAGIC_1: Byte = 0x50 // 'P'
+
+    fun slotColorHex(slot: Int): String = when (slot) {
+        1 -> "#38BDF8"
+        2 -> "#A855F7"
+        3 -> "#22C55E"
+        4 -> "#F97316"
+        else -> "#38BDF8"
+    }
 }
 
 object GamepadButtons {
@@ -163,11 +172,19 @@ object PacketCodec {
         )
     }
 
-    fun encodeHello(name: String, profile: String, transport: String): ByteArray {
-        val safeName = name.replace("\"", "'").take(40)
-        val safeProfile = profile.replace("\"", "'").take(40)
+    fun encodeHello(
+        name: String,
+        profile: String,
+        transport: String,
+        clientId: String = "",
+        preferredSlot: Int = 0,
+    ): ByteArray {
+        val safeName = name.replace("\"", "'").take(36)
+        val safeProfile = profile.replace("\"", "'").take(36)
         val safeTransport = transport.replace("\"", "'").take(20)
-        val json = """{"name":"$safeName","profile":"$safeProfile","transport":"$safeTransport"}"""
+        val safeClientId = clientId.replace("\"", "").take(24)
+        val clampedSlot = if (preferredSlot in 1..PocketPadConstants.MAX_PLAYERS) preferredSlot else 0
+        val json = """{"name":"$safeName","profile":"$safeProfile","transport":"$safeTransport","clientId":"$safeClientId","preferredSlot":$clampedSlot}"""
         return encodeFrame(PacketType.HELLO, json.toByteArray(Charsets.UTF_8))
     }
 

@@ -7,12 +7,12 @@
     <UseWPF>true</UseWPF>
     <RootNamespace>PocketPad.Windows</RootNamespace>
     <AssemblyName>PocketPad</AssemblyName>
-    <Version>1.0.0</Version>
-    <FileVersion>1.0.0.0</FileVersion>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <Version>1.1.0</Version>
+    <FileVersion>1.1.0.0</FileVersion>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
     <Product>PocketPad</Product>
     <Company>PocketPad</Company>
-    <Description>Manette de jeu Android vers PC (USB &amp; Bluetooth) avec manette Xbox 360 virtuelle et Clavier/Souris</Description>
+    <Description>Manette de jeu multijoueur (1 à 4 joueurs) Android vers PC (USB, Bluetooth &amp; Wi-Fi) avec manettes Xbox 360 virtuelles et Clavier/Souris</Description>
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
   </PropertyGroup>
 

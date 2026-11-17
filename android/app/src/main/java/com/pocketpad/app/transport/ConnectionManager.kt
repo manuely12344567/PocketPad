@@ -32,6 +32,8 @@ data class DiscoveredServer(
     val ip: String,
     val port: Int,
     val vigemReady: Boolean,
+    val connectedPlayers: Int = 0,
+    val maxPlayers: Int = PocketPadConstants.MAX_PLAYERS,
 )
 
 data class ConnectionState(
@@ -41,8 +43,12 @@ data class ConnectionState(
     val transportLabel: String = "Déconnecté",
     val pcName: String = "",
     val vigemReady: Boolean = false,
+    val playerSlot: Int = 0,
+    val maxPlayers: Int = PocketPadConstants.MAX_PLAYERS,
+    val connectedPlayers: Int = 0,
+    val slotColorHex: String = "#38BDF8",
     val pingMs: Int = -1,
-    val statusDetail: String = "Choisis Câble USB, Bluetooth ou Wi-Fi pour te connecter au PC",
+    val statusDetail: String = "Choisis Câble USB, Bluetooth ou Wi-Fi pour te connecter au PC (1 à 4 joueurs)",
     val lastError: String? = null,
 )
 
@@ -51,6 +57,10 @@ private data class ServerInfoJson(
     val vigemReady: Boolean? = null,
     val mode: String? = null,
     val version: String? = null,
+    val playerSlot: Int? = null,
+    val maxPlayers: Int? = null,
+    val connectedPlayers: Int? = null,
+    val slotColor: String? = null,
 )
 
 /**
@@ -78,6 +88,20 @@ object ConnectionManager {
     @Volatile private var activeOutput: OutputStream? = null
     @Volatile private var activeInput: InputStream? = null
     @Volatile private var activeProfileName: String = "Xbox 360 Classique"
+    @Volatile private var clientId: String = ""
+    @Volatile private var preferredSlot: Int = 0
+
+    fun configureIdentity(deviceClientId: String, desiredSlot: Int) {
+        clientId = deviceClientId
+        preferredSlot = desiredSlot.coerceIn(0, PocketPadConstants.MAX_PLAYERS)
+    }
+
+    fun requestPreferredSlot(desiredSlot: Int) {
+        preferredSlot = desiredSlot.coerceIn(0, PocketPadConstants.MAX_PLAYERS)
+        if (currentState.connected) {
+            sendHelloFrame()
+        }
+    }
 
     fun addStateListener(listener: (ConnectionState) -> Unit) {
         listeners.add(listener)
@@ -106,13 +130,25 @@ object ConnectionManager {
     fun notifyActiveProfile(profileName: String) {
         activeProfileName = profileName
         if (currentState.connected) {
-            val transportTag = when (currentState.transport) {
-                TransportKind.BLUETOOTH -> "bluetooth"
-                TransportKind.USB_ADB, TransportKind.USB_TETHER -> "usb"
-                else -> "wifi"
-            }
-            enqueueFrame(PacketCodec.encodeHello(deviceModelName(), profileName, transportTag))
+            sendHelloFrame()
         }
+    }
+
+    private fun sendHelloFrame() {
+        val transportTag = when (currentState.transport) {
+            TransportKind.BLUETOOTH -> "bluetooth"
+            TransportKind.USB_ADB, TransportKind.USB_TETHER -> "usb"
+            else -> "wifi"
+        }
+        enqueueFrame(
+            PacketCodec.encodeHello(
+                name = deviceModelName(),
+                profile = activeProfileName,
+                transport = transportTag,
+                clientId = clientId,
+                preferredSlot = preferredSlot,
+            )
+        )
     }
 
     fun sendGamepadState(state: GamepadState) {
@@ -341,8 +377,10 @@ object ConnectionManager {
                         val pcName = parts.getOrNull(1) ?: dp.address.hostAddress ?: "PC"
                         val port = parts.getOrNull(2)?.toIntOrNull() ?: PocketPadConstants.TCP_PORT
                         val vigem = parts.getOrNull(3) == "1"
+                        val connectedCount = parts.getOrNull(4)?.toIntOrNull() ?: 0
+                        val maxCount = parts.getOrNull(5)?.toIntOrNull() ?: PocketPadConstants.MAX_PLAYERS
                         val ip = dp.address.hostAddress ?: continue
-                        found[ip] = DiscoveredServer(pcName, ip, port, vigem)
+                        found[ip] = DiscoveredServer(pcName, ip, port, vigem, connectedCount, maxCount)
                     }
                 } catch (_: Exception) {
                     // Timeout slice
@@ -379,18 +417,17 @@ object ConnectionManager {
                 transportLabel = label,
                 pcName = pcFallbackName,
                 vigemReady = false,
+                playerSlot = if (preferredSlot in 1..PocketPadConstants.MAX_PLAYERS) preferredSlot else 1,
+                maxPlayers = PocketPadConstants.MAX_PLAYERS,
+                connectedPlayers = 1,
+                slotColorHex = PocketPadConstants.slotColorHex(if (preferredSlot in 1..PocketPadConstants.MAX_PLAYERS) preferredSlot else 1),
                 pingMs = -1,
                 statusDetail = "Connecté à $pcFallbackName ($label)",
                 lastError = null,
             )
         )
 
-        val transportTag = when (kind) {
-            TransportKind.BLUETOOTH -> "bluetooth"
-            TransportKind.USB_ADB, TransportKind.USB_TETHER -> "usb"
-            else -> "wifi"
-        }
-        enqueueFrame(PacketCodec.encodeHello(deviceModelName(), activeProfileName, transportTag))
+        sendHelloFrame()
 
         // Dedicated non-blocking writer thread
         Thread({
@@ -454,12 +491,20 @@ object ConnectionManager {
                                     if (cur.connected && info != null) {
                                         val name = info.pcName?.takeIf { it.isNotBlank() } ?: cur.pcName
                                         val vigem = info.vigemReady ?: cur.vigemReady
-                                        val vigemText = if (vigem) "Xbox 360 + Clavier/Souris" else "Clavier/Souris actif"
+                                        val slot = info.playerSlot?.takeIf { it in 1..PocketPadConstants.MAX_PLAYERS } ?: cur.playerSlot.coerceAtLeast(1)
+                                        val maxP = info.maxPlayers ?: PocketPadConstants.MAX_PLAYERS
+                                        val connP = info.connectedPlayers ?: cur.connectedPlayers.coerceAtLeast(1)
+                                        val sColor = info.slotColor?.takeIf { it.startsWith("#") } ?: PocketPadConstants.slotColorHex(slot)
+                                        val vigemText = if (vigem) "Xbox 360 J$slot + Clavier/Souris" else "Clavier/Souris actif"
                                         updateState(
                                             cur.copy(
                                                 pcName = name,
                                                 vigemReady = vigem,
-                                                statusDetail = "$name · ${cur.transportLabel} · $vigemText"
+                                                playerSlot = slot,
+                                                maxPlayers = maxP,
+                                                connectedPlayers = connP,
+                                                slotColorHex = sColor,
+                                                statusDetail = "$name · ${cur.transportLabel} · $connP/$maxP joueurs · $vigemText"
                                             )
                                         )
                                     }

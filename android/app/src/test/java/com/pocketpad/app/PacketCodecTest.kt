@@ -66,4 +66,23 @@ class PacketCodecTest {
         assertNotNull(parsedTs)
         assertEquals(1794820123456L, parsedTs)
     }
+
+    @Test
+    fun helloPacketIncludesClientIdAndPreferredSlotForMultiplayer() {
+        val frame = PacketCodec.encodeHello(
+            name = "Redmi Note",
+            profile = "Xbox 360",
+            transport = "bluetooth",
+            clientId = "pp_abc123",
+            preferredSlot = 2,
+        )
+        val reader = FrameStreamReader()
+        var payloadText = ""
+        reader.feed(frame, frame.size) { pkt ->
+            assertEquals(PacketType.HELLO, pkt.type)
+            payloadText = String(pkt.payload, Charsets.UTF_8)
+        }
+        assertEquals(true, payloadText.contains("\"clientId\":\"pp_abc123\""))
+        assertEquals(true, payloadText.contains("\"preferredSlot\":2"))
+    }
 }

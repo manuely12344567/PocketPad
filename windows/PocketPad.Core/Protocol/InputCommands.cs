@@ -39,8 +39,23 @@ public readonly record struct MouseCommand(short DeltaX, short DeltaY, short Whe
 
 public readonly record struct RumbleCommand(byte LargeMotor, byte SmallMotor);
 
-public sealed record ClientHelloInfo(string Name, string Profile, string Transport);
+public sealed record ClientHelloInfo(
+    string Name,
+    string Profile,
+    string Transport,
+    string ClientId = "",
+    int PreferredSlot = 0
+);
 
-public sealed record ServerInfoPayload(string PcName, bool ViGemReady, string Mode, string Version);
+public sealed record ServerInfoPayload(
+    string PcName,
+    bool ViGemReady,
+    string Mode,
+    string Version,
+    int PlayerSlot = 1,
+    int MaxPlayers = PocketPadConstants.MaxPlayers,
+    int ConnectedPlayers = 1,
+    string SlotColor = "#38BDF8"
+);
 
 public readonly record struct DecodedPacket(PacketType Type, byte[] Payload);

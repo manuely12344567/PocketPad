@@ -17,6 +17,7 @@ public sealed class TcpUsbServer : IDisposable
 {
     private readonly Action<string> _log;
     private readonly Func<bool> _isViGemReady;
+    private readonly Func<int> _getConnectedCount;
     private readonly Func<Stream, string, string, CancellationToken, Task> _onClientConnected;
     private readonly CancellationTokenSource _cts = new();
 
@@ -30,10 +31,12 @@ public sealed class TcpUsbServer : IDisposable
     public TcpUsbServer(
         Action<string> log,
         Func<bool> isViGemReady,
+        Func<int> getConnectedCount,
         Func<Stream, string, string, CancellationToken, Task> onClientConnected)
     {
         _log = log;
         _isViGemReady = isViGemReady;
+        _getConnectedCount = getConnectedCount;
         _onClientConnected = onClientConnected;
     }
 
@@ -120,7 +123,7 @@ public sealed class TcpUsbServer : IDisposable
                     continue;
 
                 var pcName = Environment.MachineName.Replace('|', '_');
-                var reply = $"{PocketPadConstants.DiscoveryResponsePrefix}|{pcName}|{PocketPadConstants.TcpPort}|{(_isViGemReady() ? "1" : "0")}";
+                var reply = $"{PocketPadConstants.DiscoveryResponsePrefix}|{pcName}|{PocketPadConstants.TcpPort}|{(_isViGemReady() ? "1" : "0")}|{_getConnectedCount()}|{PocketPadConstants.MaxPlayers}";
                 var bytes = Encoding.UTF8.GetBytes(reply);
                 await _udpDiscovery.SendAsync(bytes, bytes.Length, result.RemoteEndPoint);
             }

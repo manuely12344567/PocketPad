@@ -1,8 +1,14 @@
-# PocketPad — Manette Android vers PC Windows (USB & Bluetooth)
+# PocketPad v1.1.0 — Manette Multijoueur (1–4J) Android vers PC Windows
 
-**PocketPad** transforme ton téléphone Android en **véritable manette de jeu PC** (manette **Xbox 360 virtuelle** + **Clavier/Souris**) avec **connexion câble USB ultra-rapide (< 2 ms)**, **Bluetooth sans fil** et un **éditeur visuel complet** sur le téléphone pour concevoir tes propres manettes.
+**PocketPad** transforme de **1 à 4 téléphones Android simultanément** en **véritables manettes de jeu PC** (jusqu’à **4 manettes Xbox 360 virtuelles indépendantes** + **Clavier/Souris**) en combinant librement **câble USB (< 2 ms)**, **Bluetooth sans fil** et **Wi-Fi**, avec un **éditeur visuel complet** sur chaque téléphone.
 
 ## Fonctionnalités clés
+
+- **Multijoueur jusqu’à 4 joueurs simultanés (J1, J2, J3, J4)** :
+  - **Mix total des connexions** : 2 téléphones en câble USB + 1 en Bluetooth + 1 en Wi-Fi, ou tous sur la même méthode — tout fonctionne ensemble !
+  - **Branchement dynamique XInput** : Windows voit exactement le nombre de joueurs connectés (1, 2, 3 ou 4 manettes Xbox 360 distinctes).
+  - **Retour vibrant indépendant** : chaque joueur ressent uniquement les vibrations de sa propre manette.
+  - **Gestion en direct** : badge coloré (`J1` Cyan, `J2` Violet, `J3` Vert, `J4` Orange), permutation de slots (`J1 ⇄ J2`), reconnexion intelligente sur le même slot, et option *« Clavier/Souris réservé à J1 »*.
 
 - **Câble USB prioritaire (< 2 ms)** :
   - **Mode ADB direct (automatique)** : `PocketPad.exe` embarque `adb.exe` et ouvre automatiquement le tunnel USB dès que tu branches le câble.

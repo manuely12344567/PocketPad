@@ -2,11 +2,25 @@ namespace PocketPad.Core.Protocol;
 
 public static class PocketPadConstants
 {
-    public const string AppVersion = "1.0.0";
+    public const string AppVersion = "1.1.0";
+    public const int MaxPlayers = 4;
     public const int TcpPort = 27183;
     public const int UdpDiscoveryPort = 27184;
     public const string DiscoveryRequest = "POCKETPAD_DISCOVER_V1";
     public const string DiscoveryResponsePrefix = "POCKETPAD_SERVER_V1";
+
+    public static readonly string[] SlotColors =
+    {
+        "#38BDF8", // J1 Cyan
+        "#A855F7", // J2 Violet
+        "#22C55E", // J3 Vert
+        "#F97316", // J4 Orange
+    };
+
+    public static string GetSlotColor(int slotNumber) =>
+        slotNumber >= 1 && slotNumber <= SlotColors.Length
+            ? SlotColors[slotNumber - 1]
+            : SlotColors[0];
 
     /// <summary>
     /// Dedicated Bluetooth RFCOMM Service Class UUID (avoids conflicts with Windows COM SerialPort profiles).

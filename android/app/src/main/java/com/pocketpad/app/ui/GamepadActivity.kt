@@ -2,6 +2,7 @@ package com.pocketpad.app.ui
 
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
@@ -21,6 +22,7 @@ import com.pocketpad.app.input.HapticsEngine
 import com.pocketpad.app.model.GyroMode
 import com.pocketpad.app.model.LayoutProfile
 import com.pocketpad.app.model.ProfileRepository
+import com.pocketpad.app.protocol.PocketPadConstants
 import com.pocketpad.app.protocol.RumbleCommand
 import com.pocketpad.app.transport.ConnectionManager
 import com.pocketpad.app.transport.ConnectionState
@@ -31,9 +33,11 @@ class GamepadActivity : AppCompatActivity() {
     private lateinit var haptics: HapticsEngine
     private lateinit var gyro: GyroController
     private lateinit var surface: GamepadSurfaceView
+    private lateinit var playerBadge: TextView
     private lateinit var statusPill: TextView
     private lateinit var btnGyro: TextView
     private lateinit var btnRecenter: TextView
+    private lateinit var topAccentStrip: View
 
     private lateinit var activeProfile: LayoutProfile
     private var gyroActive = false
@@ -71,11 +75,20 @@ class GamepadActivity : AppCompatActivity() {
             )
         }
 
+        // Subtle player color glow strip at very top of screen
+        topAccentStrip = View(this).apply {
+            setBackgroundColor(Color.parseColor("#38BDF8"))
+        }
+        root.addView(
+            topAccentStrip,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(3), Gravity.TOP)
+        )
+
         // Translucent floating top mini HUD bar
         val hud = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(4), dp(10), dp(4))
+            setPadding(dp(8), dp(4), dp(10), dp(4))
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#AA0F172A"))
                 cornerRadius = dp(20).toFloat()
@@ -83,10 +96,24 @@ class GamepadActivity : AppCompatActivity() {
             }
         }
 
+        playerBadge = TextView(this).apply {
+            text = "J1"
+            textSize = 11f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#090D1A"))
+            setPadding(dp(8), dp(3), dp(8), dp(3))
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#38BDF8"))
+                cornerRadius = dp(10).toFloat()
+            }
+            setOnClickListener { showQuickSlotPicker() }
+        }
+        hud.addView(playerBadge)
+
         statusPill = TextView(this).apply {
             textSize = 11.5f
             setTextColor(Color.parseColor("#E2E8F0"))
-            setPadding(dp(6), dp(2), dp(8), dp(2))
+            setPadding(dp(7), dp(2), dp(8), dp(2))
         }
         hud.addView(statusPill)
 
@@ -169,15 +196,44 @@ class GamepadActivity : AppCompatActivity() {
     }
 
     private fun updateStatusPill(st: ConnectionState) {
-        statusPill.text = if (st.connected) {
+        if (st.connected) {
+            val slot = st.playerSlot.coerceIn(1, PocketPadConstants.MAX_PLAYERS)
+            val colorHex = st.slotColorHex.ifBlank { PocketPadConstants.slotColorHex(slot) }
+            val slotColor = Color.parseColor(colorHex)
+            playerBadge.visibility = View.VISIBLE
+            playerBadge.text = "J$slot"
+            (playerBadge.background as? GradientDrawable)?.setColor(slotColor)
+            topAccentStrip.setBackgroundColor(slotColor)
+
             val pingPart = if (st.pingMs >= 0) " · ${st.pingMs}ms" else ""
-            "● ${st.transportLabel}$pingPart"
+            val mpPart = if (st.connectedPlayers > 1) " (${st.connectedPlayers}/${st.maxPlayers}J)" else ""
+            statusPill.text = "● ${st.transportLabel}$pingPart$mpPart"
+            statusPill.setTextColor(Color.parseColor("#4ADE80"))
         } else {
-            "○ Mode aperçu (hors-ligne)"
+            playerBadge.visibility = View.GONE
+            topAccentStrip.setBackgroundColor(Color.parseColor("#334155"))
+            statusPill.text = "○ Mode aperçu (hors-ligne)"
+            statusPill.setTextColor(Color.parseColor("#FBBF24"))
         }
-        statusPill.setTextColor(
-            Color.parseColor(if (st.connected) "#4ADE80" else "#FBBF24")
+    }
+
+    private fun showQuickSlotPicker() {
+        val options = arrayOf(
+            "Attribution automatique",
+            "Joueur 1 (Cyan)",
+            "Joueur 2 (Violet)",
+            "Joueur 3 (Vert)",
+            "Joueur 4 (Orange)",
         )
+        AlertDialog.Builder(this)
+            .setTitle("Changer de place multijoueur")
+            .setItems(options) { _, which ->
+                repo.preferredSlot = which
+                ConnectionManager.requestPreferredSlot(which)
+                val label = if (which == 0) "Mode automatique" else "Demande envoyée pour Joueur $which (si libre)"
+                Toast.makeText(this, label, Toast.LENGTH_SHORT).show()
+            }
+            .show()
     }
 
     private fun showQuickProfilePicker() {
